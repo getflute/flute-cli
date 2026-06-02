@@ -166,6 +166,22 @@ src/
    **devices live under `/pay-api/v1/devices`** (not `/pos-api`). CLI verbs follow the
    source spec; endpoints follow the OpenAPI.
 4. The OpenAPI exposes extra ACH ops (`hold`/`unhold`); these are **not** in scope.
+5. **Friendly card flags map to API fields:** `--card` → `accountNumber`, `--cvv` →
+   `securityCode`, `--exp MM/YY` → `expirationMonth` + `expirationYear` (4-digit). The
+   sale/auth body also requires `cardDataSource` (defaulted to manual key-entry) and
+   `currencyId` (defaulted to USD); both overridable by flag.
+6. **`transactions list` filters:** the API supports `page`/`pageSize`/`asc`/`orderBy`/
+   `batchId`/`noBatch` — not the source spec's `--status`/`--from`/`--to`. The CLI exposes
+   `--limit` (→`pageSize`), `--page`, and `--unsettled` (→`noBatch`); `--status`/date
+   filters are applied **client-side** over the returned page and documented as such.
+
+### Money handling
+
+Amounts are parsed from the `--amount`/`--tip-amount` strings into
+`rust_decimal::Decimal` for validation (well-formed, non-negative, scale ≤ 2) — **never
+`f64` arithmetic**. The CLI performs no money math; it forwards the exact decimal the user
+typed. The wire field is a JSON number, so the request-body builder emits the amount via a
+serde path that preserves the exact decimal value (no float rounding).
 
 ### Idempotency (drives `agents.md` retry table)
 
@@ -228,10 +244,10 @@ Modeled on the reference `AGENTS.md`:
 ## 10. Tech Stack
 
 `tokio` (multi-thread rt, macros, signal), `reqwest` (rustls-tls, json),
-`clap` (derive, env), `serde`/`serde_json`, `keyring` (apple/windows/linux-native),
-`toml`, `dirs`, `thiserror`, `anyhow`, `async-trait`, `rpassword`, `tracing`/
-`tracing-subscriber`, `url`, `axoupdater`. Dev: `wiremock`, `tempfile`,
-`pretty_assertions`, `assert_cmd`. Edition 2024.
+`clap` (derive, env), `serde`/`serde_json`, `rust_decimal` (money parse/validate),
+`keyring` (apple/windows/linux-native), `toml`, `dirs`, `thiserror`, `anyhow`,
+`async-trait`, `rpassword`, `tracing`/`tracing-subscriber`, `url`, `axoupdater`.
+Dev: `wiremock`, `tempfile`, `pretty_assertions`, `assert_cmd`. Edition 2024.
 
 ## 11. Open Items (resolve during implementation)
 

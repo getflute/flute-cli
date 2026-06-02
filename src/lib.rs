@@ -17,8 +17,11 @@ pub(crate) fn build_client(profile: &str) -> anyhow::Result<(config::Profile, ap
 
     let p = config::Profile::by_name(profile)
         .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
-    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?
-        .ok_or_else(|| anyhow::anyhow!("no credentials for [{profile}]; run `flute auth login`"))?;
+    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
+        api::ApiError::Auth(format!(
+            "no credentials for [{profile}]; run `flute auth login`"
+        ))
+    })?;
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()?;
@@ -42,13 +45,13 @@ pub(crate) fn build_client(profile: &str) -> anyhow::Result<(config::Profile, ap
 ///
 /// `RUST_LOG` always overrides the default filter when set.
 fn init_tracing(debug: bool) {
-    let env_filter = if debug {
-        tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "debug,flute_cli=debug,reqwest=debug,hyper=info".into())
-    } else {
-        tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "warn,flute_cli=info".into())
-    };
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        if debug {
+            "debug,flute_cli=debug,reqwest=debug,hyper=info".into()
+        } else {
+            "warn,flute_cli=info".into()
+        }
+    });
 
     if debug {
         let _ = tracing_subscriber::fmt()
@@ -98,16 +101,18 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Version => cli::util::version(&profile, output_fmt),
         };
 
-        // Structured error envelope for agents: when --output json is set and
-        // the command failed, print a JSON object to stdout and exit non-zero.
-        // This keeps the agent's stdout stream pure JSON on both success and
-        // failure paths.
-        if let Err(ref e) = dispatch_result
-            && output_fmt == cli::OutputFormat::Json
-        {
-            let envelope = cli::output::ErrorJson::from_anyhow(e);
-            if let Ok(json) = serde_json::to_string_pretty(&envelope) {
-                println!("{json}");
+        // On failure: always call process::exit with the semantic exit code.
+        // Under --output json: additionally print the structured error envelope
+        // to stdout so the agent's stdout stream stays pure JSON.
+        // Under table/quiet: print a human-readable message to stderr instead.
+        if let Err(ref e) = dispatch_result {
+            if output_fmt == cli::OutputFormat::Json {
+                let envelope = cli::output::ErrorJson::from_anyhow(e);
+                if let Ok(json) = serde_json::to_string_pretty(&envelope) {
+                    println!("{json}");
+                }
+            } else {
+                eprintln!("Error: {e:#}");
             }
             std::process::exit(cli::output::exit_code_for(e));
         }

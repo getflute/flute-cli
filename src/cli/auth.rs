@@ -87,18 +87,12 @@ pub fn logout(profile: &str) -> Result<()> {
 
 /// Print the current bearer token (debugging aid).
 pub async fn token(profile: &str) -> Result<()> {
-    let p =
-        Profile::by_name(profile).ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
-    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?
-        .ok_or_else(|| anyhow::anyhow!("no credentials for [{profile}]; run `flute auth login`"))?;
-    let fetcher = std::sync::Arc::new(auth::token::OAuth2Fetcher {
-        oauth_url: p.oauth_url,
-        client_id: id,
-        client_secret: secret,
-        http: reqwest::Client::new(),
-    });
-    let store = auth::token::TokenStore::new(fetcher);
-    let bearer = store.bearer().await?;
+    let (_p, api) = crate::build_client(profile)?;
+    let bearer = api
+        .tokens
+        .bearer()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     println!("{bearer}");
     Ok(())
 }

@@ -146,7 +146,11 @@ async fn dispatch_transactions(
     tc: cli::TransactionsCommand,
 ) -> anyhow::Result<()> {
     use cli::TransactionsCommand;
-    use cli::transactions::{CardTxnKind, SaleArgs, execute_card_txn};
+    use cli::money::parse_amount;
+    use cli::transactions::{
+        CardTxnKind, SaleArgs, build_capture_body, build_refund_body, build_settle_body,
+        build_tip_adjust_body, build_void_body, execute_card_txn, render_transaction,
+    };
 
     match tc {
         TransactionsCommand::Sale {
@@ -228,6 +232,56 @@ async fn dispatch_transactions(
                 CardTxnKind::Auth,
             )
             .await
+        }
+        TransactionsCommand::Capture {
+            transaction_id,
+            amount,
+        } => {
+            let amt = amount.as_deref().map(parse_amount).transpose()?;
+            let body = build_capture_body(&transaction_id, amt);
+            let (p, api) = build_client(profile)?;
+            let result = api.capture(body).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+        TransactionsCommand::Void { transaction_id } => {
+            let body = build_void_body(&transaction_id);
+            let (p, api) = build_client(profile)?;
+            let result = api.void(body).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+        TransactionsCommand::Refund {
+            transaction_id,
+            amount,
+            card_data_source,
+        } => {
+            let amt = amount.as_deref().map(parse_amount).transpose()?;
+            let body = build_refund_body(&transaction_id, amt, card_data_source);
+            let (p, api) = build_client(profile)?;
+            let result = api.refund(body).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+        TransactionsCommand::Settle {
+            payment_processor_id,
+        } => {
+            let body = build_settle_body(&payment_processor_id);
+            let (p, api) = build_client(profile)?;
+            let result = api.settle(body).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+        TransactionsCommand::TipAdjust {
+            transaction_id,
+            tip_amount,
+        } => {
+            let tip = parse_amount(&tip_amount)?;
+            let body = build_tip_adjust_body(&transaction_id, tip);
+            let (p, api) = build_client(profile)?;
+            let result = api.tip_adjust(body).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+        TransactionsCommand::Get { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.get_transaction(&id).await?;
+            render_transaction(&result, output_fmt, &p.name)
         }
     }
 }

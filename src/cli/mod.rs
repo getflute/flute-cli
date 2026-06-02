@@ -63,9 +63,7 @@ pub enum AuthCommand {
     Token,
 }
 
-/// Transaction subcommands — Phase 1 exposes `sale` and `auth` only.
-/// Capture/void/refund/settle/tip-adjust/get/list/inspect are added in later
-/// units and are intentionally absent here (YAGNI).
+/// Transaction subcommands — Phase 1 lifecycle ops.
 #[derive(Subcommand, Debug)]
 pub enum TransactionsCommand {
     /// Charge a card immediately (POST /pay-api/v1/transactions/sale).
@@ -186,6 +184,67 @@ pub enum TransactionsCommand {
         /// Reference ID.
         #[arg(long)]
         reference_id: Option<String>,
+    },
+
+    /// Capture a previously authorised transaction (POST /pay-api/v1/transactions/capture).
+    Capture {
+        /// UUID of the transaction to capture (required).
+        #[arg(long, required = true)]
+        transaction_id: String,
+
+        /// Capture amount for a partial capture. Omit for a full capture.
+        #[arg(long)]
+        amount: Option<String>,
+    },
+
+    /// Void a transaction (POST /pay-api/v1/transactions/void).
+    Void {
+        /// UUID of the transaction to void (required).
+        #[arg(long, required = true)]
+        transaction_id: String,
+    },
+
+    /// Refund (return) a transaction (POST /pay-api/v1/transactions/return).
+    Refund {
+        /// UUID of the transaction to refund (required).
+        #[arg(long, required = true)]
+        transaction_id: String,
+
+        /// Refund amount for a partial refund. Omit for a full refund.
+        #[arg(long)]
+        amount: Option<String>,
+
+        /// Card data source enum (default 1 = Internet/ISV API). Required by the API.
+        #[arg(long, default_value_t = 1)]
+        card_data_source: i32,
+    },
+
+    /// Settle the open batch for a payment processor (POST /pay-api/v1/transactions/settle).
+    ///
+    /// IMPORTANT: This is a **batch-level** operation, not a per-transaction operation.
+    /// The API's SettleRequestDto requires a `paymentProcessorId`; it closes/settles the
+    /// processor's entire open batch. Use `--payment-processor-id` to identify the processor.
+    Settle {
+        /// UUID of the payment processor whose open batch should be settled (required).
+        #[arg(long, required = true)]
+        payment_processor_id: String,
+    },
+
+    /// Adjust the tip on a transaction (POST /pay-api/v1/transactions/tip-adjustment).
+    TipAdjust {
+        /// UUID of the transaction to adjust (required).
+        #[arg(long, required = true)]
+        transaction_id: String,
+
+        /// New tip amount (required). Plain decimal, e.g. `3.50`.
+        #[arg(long, required = true)]
+        tip_amount: String,
+    },
+
+    /// Fetch a single transaction by ID (GET /pay-api/v1/transactions/{id}).
+    Get {
+        /// Transaction UUID to retrieve (positional).
+        id: String,
     },
 }
 

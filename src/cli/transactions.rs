@@ -336,6 +336,104 @@ pub(crate) fn parse_exp(s: &str) -> anyhow::Result<(u32, u32)> {
     Ok((month, year))
 }
 
+// ── Lifecycle body-builders (Tasks 1.6–1.7) ──────────────────────────────────
+
+/// Build the JSON request body for a `capture` request.
+///
+/// `amount` is optional — omit for a full capture, pass for a partial capture.
+///
+/// # Wire fields
+/// - `transactionId` (required)
+/// - `amount` (optional, only when `Some`)
+pub(crate) fn build_capture_body(
+    transaction_id: &str,
+    amount: Option<rust_decimal::Decimal>,
+) -> Value {
+    let mut obj = Map::new();
+    obj.insert(
+        "transactionId".into(),
+        Value::String(transaction_id.to_string()),
+    );
+    if let Some(a) = amount {
+        obj.insert("amount".into(), to_amount_number(a));
+    }
+    Value::Object(obj)
+}
+
+/// Build the JSON request body for a `void` request.
+///
+/// # Wire fields
+/// - `transactionId` (required)
+pub(crate) fn build_void_body(transaction_id: &str) -> Value {
+    let mut obj = Map::new();
+    obj.insert(
+        "transactionId".into(),
+        Value::String(transaction_id.to_string()),
+    );
+    Value::Object(obj)
+}
+
+/// Build the JSON request body for a `refund` (return) request.
+///
+/// `amount` is optional — omit for a full refund, pass for a partial refund.
+/// `card_data_source` is required by the API (`ReturnRequestDto`); CLI default is `1` (Internet/ISV).
+///
+/// # Wire fields
+/// - `transactionId` (required)
+/// - `cardDataSource` (required, default 1)
+/// - `amount` (optional, only when `Some`)
+pub(crate) fn build_refund_body(
+    transaction_id: &str,
+    amount: Option<rust_decimal::Decimal>,
+    card_data_source: i32,
+) -> Value {
+    let mut obj = Map::new();
+    obj.insert(
+        "transactionId".into(),
+        Value::String(transaction_id.to_string()),
+    );
+    obj.insert("cardDataSource".into(), json!(card_data_source));
+    if let Some(a) = amount {
+        obj.insert("amount".into(), to_amount_number(a));
+    }
+    Value::Object(obj)
+}
+
+/// Build the JSON request body for a `settle` request.
+///
+/// **Note**: The API's `SettleRequestDto` accepts a `paymentProcessorId` (NOT a
+/// `transactionId`). Settle closes/settles the open batch for the given payment
+/// processor — it is a batch-level operation, not a per-transaction one.
+///
+/// # Wire fields
+/// - `paymentProcessorId` (required)
+pub(crate) fn build_settle_body(payment_processor_id: &str) -> Value {
+    let mut obj = Map::new();
+    obj.insert(
+        "paymentProcessorId".into(),
+        Value::String(payment_processor_id.to_string()),
+    );
+    Value::Object(obj)
+}
+
+/// Build the JSON request body for a `tip-adjustment` request.
+///
+/// # Wire fields
+/// - `transactionId` (required)
+/// - `tipAmount` (required, exact decimal via `to_amount_number`)
+pub(crate) fn build_tip_adjust_body(
+    transaction_id: &str,
+    tip_amount: rust_decimal::Decimal,
+) -> Value {
+    let mut obj = Map::new();
+    obj.insert(
+        "transactionId".into(),
+        Value::String(transaction_id.to_string()),
+    );
+    obj.insert("tipAmount".into(), to_amount_number(tip_amount));
+    Value::Object(obj)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -738,6 +836,109 @@ mod tests {
         assert!(
             body["l3"].get("products").is_none(),
             "products must be absent when all --l3-product values are blank"
+        );
+    }
+
+    // ── build_capture_body (Task 1.6) ─────────────────────────────────────────
+
+    #[test]
+    fn build_capture_body_full_capture_has_no_amount() {
+        let body = build_capture_body("txn-uuid-001", None);
+        assert_eq!(body["transactionId"], "txn-uuid-001");
+        assert!(
+            body.get("amount").is_none(),
+            "amount must be absent for full capture"
+        );
+    }
+
+    #[test]
+    fn build_capture_body_partial_capture_has_exact_amount() {
+        let body = build_capture_body("txn-uuid-002", Some(Decimal::from_str("50.00").unwrap()));
+        assert_eq!(body["transactionId"], "txn-uuid-002");
+        assert!(body["amount"].is_number(), "amount must be a JSON number");
+        assert_eq!(
+            serde_json::to_string(&body["amount"]).unwrap(),
+            "50.00",
+            "partial capture amount must serialise as exact decimal"
+        );
+    }
+
+    // ── build_void_body (Task 1.6) ────────────────────────────────────────────
+
+    #[test]
+    fn build_void_body_sets_transaction_id() {
+        let body = build_void_body("txn-void-123");
+        assert_eq!(body["transactionId"], "txn-void-123");
+        // No extra fields expected
+        let obj = body.as_object().unwrap();
+        assert_eq!(obj.len(), 1, "void body must have exactly one field");
+    }
+
+    // ── build_refund_body (Task 1.6) ──────────────────────────────────────────
+
+    #[test]
+    fn build_refund_body_full_refund_defaults_card_data_source() {
+        let body = build_refund_body("txn-refund-001", None, 1);
+        assert_eq!(body["transactionId"], "txn-refund-001");
+        assert_eq!(body["cardDataSource"], 1);
+        assert!(
+            body.get("amount").is_none(),
+            "amount must be absent for full refund"
+        );
+    }
+
+    #[test]
+    fn build_refund_body_partial_refund_has_exact_amount() {
+        let body = build_refund_body(
+            "txn-refund-002",
+            Some(Decimal::from_str("25.00").unwrap()),
+            1,
+        );
+        assert_eq!(body["transactionId"], "txn-refund-002");
+        assert_eq!(body["cardDataSource"], 1);
+        assert!(body["amount"].is_number());
+        assert_eq!(serde_json::to_string(&body["amount"]).unwrap(), "25.00");
+    }
+
+    #[test]
+    fn build_refund_body_respects_custom_card_data_source() {
+        let body = build_refund_body("txn-refund-003", None, 7);
+        assert_eq!(body["cardDataSource"], 7);
+    }
+
+    // ── build_settle_body (Task 1.6) ──────────────────────────────────────────
+
+    #[test]
+    fn build_settle_body_sets_payment_processor_id() {
+        let body = build_settle_body("proc-uuid-abc");
+        assert_eq!(body["paymentProcessorId"], "proc-uuid-abc");
+        // Must NOT have transactionId — settle is a batch-level op
+        assert!(
+            body.get("transactionId").is_none(),
+            "settle body must NOT have transactionId"
+        );
+        let obj = body.as_object().unwrap();
+        assert_eq!(
+            obj.len(),
+            1,
+            "settle body must have exactly one field: paymentProcessorId"
+        );
+    }
+
+    // ── build_tip_adjust_body (Task 1.6) ──────────────────────────────────────
+
+    #[test]
+    fn build_tip_adjust_body_sets_transaction_id_and_tip_amount() {
+        let body = build_tip_adjust_body("txn-tip-999", Decimal::from_str("3.50").unwrap());
+        assert_eq!(body["transactionId"], "txn-tip-999");
+        assert!(
+            body["tipAmount"].is_number(),
+            "tipAmount must be a JSON number"
+        );
+        assert_eq!(
+            serde_json::to_string(&body["tipAmount"]).unwrap(),
+            "3.50",
+            "tipAmount must serialise as exact decimal"
         );
     }
 }

@@ -65,14 +65,18 @@ mod tests {
         assert_eq!(result["status"], "Approved");
     }
 
-    /// Wiremock test: `auth_txn` POSTs to the correct path.
+    /// Wiremock test: `auth_txn` POSTs to the correct path with the expected body fields.
     #[tokio::test]
-    async fn auth_txn_posts_to_correct_path() {
+    async fn auth_txn_posts_to_correct_path_with_body() {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
             .and(path("/pay-api/v1/transactions/auth"))
             .and(header("authorization", "Bearer test-token"))
+            .and(body_partial_json(json!({
+                "cardDataSource": 1,
+                "customerInitiatedTransaction": false
+            })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "transactionId": "t_auth_456",
                 "status": "Authorized"

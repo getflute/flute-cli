@@ -115,13 +115,38 @@ pub(crate) fn resolve_output(
         .unwrap_or(cli::OutputFormat::Table)
 }
 
+/// Parsed money fields common to every card-transaction verb.
+struct ParsedMoneyArgs {
+    amount: rust_decimal::Decimal,
+    tip_amount: Option<rust_decimal::Decimal>,
+    l2_tax_rate: Option<rust_decimal::Decimal>,
+}
+
+/// Parse the three money strings that every card-transaction verb carries.
+///
+/// Extracted to avoid duplicating three `parse_amount` / `.transpose()` calls
+/// in every match arm.  As new verbs are added (capture, refund, …) this helper
+/// keeps the parse logic in one place.
+fn parse_txn_money(
+    amount: &str,
+    tip_amount: Option<&str>,
+    l2_tax_rate: Option<&str>,
+) -> anyhow::Result<ParsedMoneyArgs> {
+    use cli::money::parse_amount;
+    Ok(ParsedMoneyArgs {
+        amount: parse_amount(amount)?,
+        tip_amount: tip_amount.map(parse_amount).transpose()?,
+        l2_tax_rate: l2_tax_rate.map(parse_amount).transpose()?,
+    })
+}
+
 async fn dispatch_transactions(
     profile: &str,
     output_fmt: cli::OutputFormat,
     tc: cli::TransactionsCommand,
 ) -> anyhow::Result<()> {
     use cli::TransactionsCommand;
-    use cli::money::parse_amount;
+    use cli::transactions::{CardTxnKind, SaleArgs, execute_card_txn};
 
     match tc {
         TransactionsCommand::Sale {
@@ -140,26 +165,27 @@ async fn dispatch_transactions(
             l3_product,
             reference_id,
         } => {
-            let amount = parse_amount(&amount)?;
-            let tip_amount = tip_amount.as_deref().map(parse_amount).transpose()?;
-            let l2_tax_rate = l2_tax_rate.as_deref().map(parse_amount).transpose()?;
-            cli::transactions::sale(
+            let m = parse_txn_money(&amount, tip_amount.as_deref(), l2_tax_rate.as_deref())?;
+            execute_card_txn(
                 profile,
                 output_fmt,
-                amount,
-                card,
-                exp,
-                cvv,
-                tip_amount,
-                customer_id,
-                payment_method_id,
-                currency_id,
-                card_data_source,
-                l2_tax_rate,
-                l3_invoice,
-                l3_po,
-                l3_product,
-                reference_id,
+                SaleArgs {
+                    amount: m.amount,
+                    card,
+                    exp,
+                    cvv,
+                    tip_amount: m.tip_amount,
+                    customer_id,
+                    payment_method_id,
+                    currency_id,
+                    card_data_source,
+                    l2_tax_rate: m.l2_tax_rate,
+                    l3_invoice,
+                    l3_po,
+                    l3_product,
+                    reference_id,
+                },
+                CardTxnKind::Sale,
             )
             .await
         }
@@ -179,26 +205,27 @@ async fn dispatch_transactions(
             l3_product,
             reference_id,
         } => {
-            let amount = parse_amount(&amount)?;
-            let tip_amount = tip_amount.as_deref().map(parse_amount).transpose()?;
-            let l2_tax_rate = l2_tax_rate.as_deref().map(parse_amount).transpose()?;
-            cli::transactions::auth_txn(
+            let m = parse_txn_money(&amount, tip_amount.as_deref(), l2_tax_rate.as_deref())?;
+            execute_card_txn(
                 profile,
                 output_fmt,
-                amount,
-                card,
-                exp,
-                cvv,
-                tip_amount,
-                customer_id,
-                payment_method_id,
-                currency_id,
-                card_data_source,
-                l2_tax_rate,
-                l3_invoice,
-                l3_po,
-                l3_product,
-                reference_id,
+                SaleArgs {
+                    amount: m.amount,
+                    card,
+                    exp,
+                    cvv,
+                    tip_amount: m.tip_amount,
+                    customer_id,
+                    payment_method_id,
+                    currency_id,
+                    card_data_source,
+                    l2_tax_rate: m.l2_tax_rate,
+                    l3_invoice,
+                    l3_po,
+                    l3_product,
+                    reference_id,
+                },
+                CardTxnKind::Auth,
             )
             .await
         }

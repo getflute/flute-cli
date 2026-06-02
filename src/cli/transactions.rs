@@ -16,7 +16,7 @@ use crate::cli::output::{Envelope, OutputFormat};
 ///
 /// `card_data_source` defaults to `1` (Internet/ISV API).
 /// `currency_id` is `None` by default — the server defaults when absent.
-pub struct SaleArgs {
+pub(crate) struct SaleArgs {
     pub amount: Decimal,
     pub card: Option<String>,
     pub exp: Option<String>,
@@ -52,44 +52,54 @@ pub struct SaleArgs {
 /// | 3   | Unit of meas. | `unitOfMeasure` |
 /// | 4   | Quantity      | `quantity`      |
 fn parse_l3_product(s: &str) -> Value {
-    let parts: Vec<&str> = s.splitn(5, ',').collect();
+    // Reject entirely blank/whitespace input or input with no description
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Value::Null;
+    }
+    let parts: Vec<&str> = trimmed.splitn(5, ',').collect();
+    // description (pos 0) must be non-empty after trimming
+    let description = parts.first().map(|v| v.trim()).unwrap_or("");
+    if description.is_empty() {
+        return Value::Null;
+    }
     let mut obj = Map::new();
     // description (pos 0)
     if let Some(v) = parts.first()
-        && !v.is_empty()
+        && !v.trim().is_empty()
     {
-        obj.insert("description".into(), Value::String(v.to_string()));
+        obj.insert("description".into(), Value::String(v.trim().to_string()));
     }
     // productCode (pos 1)
     if let Some(v) = parts.get(1)
-        && !v.is_empty()
+        && !v.trim().is_empty()
     {
-        obj.insert("productCode".into(), Value::String(v.to_string()));
+        obj.insert("productCode".into(), Value::String(v.trim().to_string()));
     }
     // unitPrice (pos 2) — try to parse as number
     if let Some(v) = parts.get(2)
-        && !v.is_empty()
+        && !v.trim().is_empty()
     {
         if let Ok(d) = v.trim().parse::<Decimal>() {
             obj.insert("unitPrice".into(), to_amount_number(d));
         } else {
-            obj.insert("unitPrice".into(), Value::String(v.to_string()));
+            obj.insert("unitPrice".into(), Value::String(v.trim().to_string()));
         }
     }
     // unitOfMeasure (pos 3)
     if let Some(v) = parts.get(3)
-        && !v.is_empty()
+        && !v.trim().is_empty()
     {
-        obj.insert("unitOfMeasure".into(), Value::String(v.to_string()));
+        obj.insert("unitOfMeasure".into(), Value::String(v.trim().to_string()));
     }
     // quantity (pos 4) — try to parse as number
     if let Some(v) = parts.get(4)
-        && !v.is_empty()
+        && !v.trim().is_empty()
     {
         if let Ok(d) = v.trim().parse::<Decimal>() {
             obj.insert("quantity".into(), to_amount_number(d));
         } else {
-            obj.insert("quantity".into(), Value::String(v.to_string()));
+            obj.insert("quantity".into(), Value::String(v.trim().to_string()));
         }
     }
     Value::Object(obj)
@@ -107,7 +117,7 @@ fn parse_l3_product(s: &str) -> Value {
 /// - `cardDataSource` is always present (required by the API spec).
 /// - PAN (`accountNumber`) appears in the request body as-is; redaction is only
 ///   applied to `--debug` log output, not to the wire body.
-pub fn build_sale_body(args: &SaleArgs) -> Result<Value> {
+pub(crate) fn build_sale_body(args: &SaleArgs) -> Result<Value> {
     let mut obj = Map::new();
 
     // Required-ish fields always present
@@ -172,8 +182,11 @@ pub fn build_sale_body(args: &SaleArgs) -> Result<Value> {
                 .l3_product
                 .iter()
                 .map(|s| parse_l3_product(s))
+                .filter(|v| !v.is_null())
                 .collect();
-            l3.insert("products".into(), Value::Array(products));
+            if !products.is_empty() {
+                l3.insert("products".into(), Value::Array(products));
+            }
         }
         obj.insert("l3".into(), Value::Object(l3));
     }
@@ -186,7 +199,7 @@ pub fn build_sale_body(args: &SaleArgs) -> Result<Value> {
 /// Build the "quiet" output string: just the transaction ID (or `id`).
 ///
 /// Returns `None` when neither field is present in the value.
-pub fn transaction_quiet(v: &Value) -> Option<String> {
+pub(crate) fn transaction_quiet(v: &Value) -> Option<String> {
     v.get("transactionId")
         .or_else(|| v.get("id"))
         .and_then(|val| val.as_str())
@@ -196,7 +209,7 @@ pub fn transaction_quiet(v: &Value) -> Option<String> {
 /// Build the "table" output string with key transaction fields.
 ///
 /// Fields shown: transactionId, status, amount (totalAmount), authCode, responseDescription.
-pub fn transaction_table(v: &Value) -> String {
+pub(crate) fn transaction_table(v: &Value) -> String {
     let txn_id = v
         .get("transactionId")
         .or_else(|| v.get("id"))
@@ -205,15 +218,20 @@ pub fn transaction_table(v: &Value) -> String {
 
     let status = v.get("status").and_then(|x| x.as_str()).unwrap_or("—");
 
-    // amount field may be an object (AmountIsvDto) or a scalar
+    // amount field may be an object (AmountIsvDto), a JSON number, a string, or absent/null
     let amount = match v.get("amount") {
         Some(Value::Object(obj)) => obj
             .get("totalAmount")
             .and_then(|a| a.as_f64())
             .map(|f| format!("{f:.2}"))
             .unwrap_or_else(|| "—".to_string()),
-        Some(scalar) => scalar.to_string(),
-        None => "—".to_string(),
+        Some(Value::Number(n)) => n
+            .as_f64()
+            .map(|f| format!("{f:.2}"))
+            .unwrap_or_else(|| "—".to_string()),
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Null) | None => "—".to_string(),
+        Some(other) => other.to_string(),
     };
 
     let auth_code = v.get("authCode").and_then(|x| x.as_str()).unwrap_or("—");
@@ -229,10 +247,16 @@ pub fn transaction_table(v: &Value) -> String {
 
 // ── CLI handlers ─────────────────────────────────────────────────────────────
 
+/// Selects which card-transaction endpoint to call.
+pub(crate) enum CardTxnKind {
+    Sale,
+    Auth,
+}
+
 /// Render a transaction response according to the requested output format.
 ///
 /// Writes to stdout. `environment` is embedded in the JSON envelope meta.
-pub fn render_transaction(v: &Value, fmt: OutputFormat, environment: &str) -> Result<()> {
+pub(crate) fn render_transaction(v: &Value, fmt: OutputFormat, environment: &str) -> Result<()> {
     match fmt {
         OutputFormat::Json => {
             let envelope = Envelope::new("transaction", v.clone(), environment, None);
@@ -250,89 +274,24 @@ pub fn render_transaction(v: &Value, fmt: OutputFormat, environment: &str) -> Re
     Ok(())
 }
 
-/// Handler for `flute transactions sale`.
-#[allow(clippy::too_many_arguments)]
-pub async fn sale(
-    profile: &str,
-    output: OutputFormat,
-    amount: Decimal,
-    card: Option<String>,
-    exp: Option<String>,
-    cvv: Option<String>,
-    tip_amount: Option<Decimal>,
-    customer_id: Option<String>,
-    payment_method_id: Option<String>,
-    currency_id: Option<i32>,
-    card_data_source: i32,
-    l2_tax_rate: Option<Decimal>,
-    l3_invoice: Option<String>,
-    l3_po: Option<String>,
-    l3_product: Vec<String>,
-    reference_id: Option<String>,
-) -> Result<()> {
-    let args = SaleArgs {
-        amount,
-        card,
-        exp,
-        cvv,
-        tip_amount,
-        customer_id,
-        payment_method_id,
-        currency_id,
-        card_data_source,
-        l2_tax_rate,
-        l3_invoice,
-        l3_po,
-        l3_product,
-        reference_id,
-    };
-    let body = build_sale_body(&args)?;
-    let (p, api) = crate::build_client(profile)?;
-    let result = api.sale(body).await?;
-    render_transaction(&result, output, &p.name)
-}
-
-/// Handler for `flute transactions auth`.
+/// Shared handler for card-transaction verbs that share the same request body
+/// shape (`sale` and `auth`).
 ///
-/// Same body shape as `sale`; routed to a different endpoint.
-#[allow(clippy::too_many_arguments)]
-pub async fn auth_txn(
+/// Both `sale` and `auth` build the body identically via `build_sale_body` and
+/// differ only in which API endpoint they call.  All future card-verb handlers
+/// that share this shape should call this function.
+pub(crate) async fn execute_card_txn(
     profile: &str,
     output: OutputFormat,
-    amount: Decimal,
-    card: Option<String>,
-    exp: Option<String>,
-    cvv: Option<String>,
-    tip_amount: Option<Decimal>,
-    customer_id: Option<String>,
-    payment_method_id: Option<String>,
-    currency_id: Option<i32>,
-    card_data_source: i32,
-    l2_tax_rate: Option<Decimal>,
-    l3_invoice: Option<String>,
-    l3_po: Option<String>,
-    l3_product: Vec<String>,
-    reference_id: Option<String>,
+    args: SaleArgs,
+    kind: CardTxnKind,
 ) -> Result<()> {
-    let args = SaleArgs {
-        amount,
-        card,
-        exp,
-        cvv,
-        tip_amount,
-        customer_id,
-        payment_method_id,
-        currency_id,
-        card_data_source,
-        l2_tax_rate,
-        l3_invoice,
-        l3_po,
-        l3_product,
-        reference_id,
-    };
     let body = build_sale_body(&args)?;
     let (p, api) = crate::build_client(profile)?;
-    let result = api.auth_txn(body).await?;
+    let result = match kind {
+        CardTxnKind::Sale => api.sale(body).await?,
+        CardTxnKind::Auth => api.auth_txn(body).await?,
+    };
     render_transaction(&result, output, &p.name)
 }
 
@@ -348,7 +307,7 @@ pub async fn auth_txn(
 /// - 4-digit year is used as-is.
 /// - Year tokens that are not exactly 2 or 4 digits are rejected.
 /// - Non-numeric tokens and wrong separators are rejected.
-pub fn parse_exp(s: &str) -> anyhow::Result<(u32, u32)> {
+pub(crate) fn parse_exp(s: &str) -> anyhow::Result<(u32, u32)> {
     let parts: Vec<&str> = s.splitn(2, '/').collect();
     if parts.len() != 2 {
         anyhow::bail!("expiry must be MM/YY or MM/YYYY (got '{s}')");
@@ -667,6 +626,52 @@ mod tests {
     }
 
     #[test]
+    fn transaction_table_amount_null_renders_dash() {
+        let v = json!({
+            "transactionId": "t_null",
+            "status": "Approved",
+            "amount": null,
+            "authCode": "A1",
+            "responseDescription": "OK"
+        });
+        let table = transaction_table(&v);
+        assert!(table.contains("—"), "null amount must render as —");
+    }
+
+    #[test]
+    fn transaction_table_amount_missing_renders_dash() {
+        let v = json!({
+            "transactionId": "t_missing",
+            "status": "Approved",
+            "authCode": "A2",
+            "responseDescription": "OK"
+        });
+        let table = transaction_table(&v);
+        assert!(table.contains("—"), "missing amount must render as —");
+    }
+
+    #[test]
+    fn transaction_table_amount_string_renders_unquoted() {
+        let v = json!({
+            "transactionId": "t_str",
+            "status": "Approved",
+            "amount": "99.99",
+            "authCode": "A3",
+            "responseDescription": "OK"
+        });
+        let table = transaction_table(&v);
+        // Must contain "99.99" without surrounding quotes
+        assert!(
+            table.contains("99.99"),
+            "string amount must render unquoted"
+        );
+        assert!(
+            !table.contains("\"99.99\""),
+            "string amount must NOT be quoted"
+        );
+    }
+
+    #[test]
     fn render_transaction_json_envelope_shape() {
         let v = sample_txn_response();
         // Capture stdout by rendering to a string via the envelope directly
@@ -695,5 +700,44 @@ mod tests {
         let v = parse_l3_product("Widget Only");
         assert_eq!(v["description"], "Widget Only");
         assert!(v.get("productCode").is_none());
+    }
+
+    #[test]
+    fn parse_l3_product_empty_string_returns_null() {
+        assert!(
+            parse_l3_product("").is_null(),
+            "empty string must return Null"
+        );
+        assert!(
+            parse_l3_product("   ").is_null(),
+            "whitespace-only must return Null"
+        );
+    }
+
+    #[test]
+    fn build_sale_body_empty_l3_product_produces_no_products_entry() {
+        let args = SaleArgs {
+            amount: Decimal::from_str("50.00").unwrap(),
+            card: None,
+            exp: None,
+            cvv: None,
+            tip_amount: None,
+            customer_id: None,
+            payment_method_id: None,
+            currency_id: None,
+            card_data_source: 1,
+            l2_tax_rate: None,
+            l3_invoice: Some("INV-EMPTY".into()),
+            l3_po: None,
+            l3_product: vec!["".into(), "   ".into()],
+            reference_id: None,
+        };
+        let body = build_sale_body(&args).unwrap();
+        // l3 is present (because l3_invoice was set), but products must be absent
+        assert!(body.get("l3").is_some(), "l3 must be present");
+        assert!(
+            body["l3"].get("products").is_none(),
+            "products must be absent when all --l3-product values are blank"
+        );
     }
 }

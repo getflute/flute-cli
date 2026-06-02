@@ -43,13 +43,24 @@ pub fn delete_client_credentials(profile: &str) -> Result<()> {
     Ok(())
 }
 
-/// Env vars win over the keychain — the recommended path for CI/agents.
-pub fn load_with_env_fallback(profile: &str) -> Result<Option<(String, String)>> {
-    if let (Ok(id), Ok(secret)) = (
+/// Returns `(client_id, client_secret)` from environment variables if both are set.
+///
+/// Returns `None` if either variable is absent or empty. This is a pure helper
+/// with no I/O so it can be tested without touching the keychain.
+pub(crate) fn creds_from_env() -> Option<(String, String)> {
+    match (
         std::env::var("FLUTE_CLIENT_ID"),
         std::env::var("FLUTE_CLIENT_SECRET"),
     ) {
-        return Ok(Some((id, secret)));
+        (Ok(id), Ok(secret)) => Some((id, secret)),
+        _ => None,
+    }
+}
+
+/// Env vars win over the keychain — the recommended path for CI/agents.
+pub fn load_with_env_fallback(profile: &str) -> Result<Option<(String, String)>> {
+    if let Some(creds) = creds_from_env() {
+        return Ok(Some(creds));
     }
     load_client_credentials(profile)
 }
@@ -68,6 +79,48 @@ mod tests {
             || {
                 let got = load_with_env_fallback("sandbox").unwrap();
                 assert_eq!(got, Some(("env-id".to_string(), "env-secret".to_string())));
+            },
+        );
+    }
+
+    #[test]
+    fn creds_from_env_both_set_returns_pair() {
+        temp_env::with_vars(
+            [
+                ("FLUTE_CLIENT_ID", Some("ci-id")),
+                ("FLUTE_CLIENT_SECRET", Some("ci-secret")),
+            ],
+            || {
+                assert_eq!(
+                    creds_from_env(),
+                    Some(("ci-id".to_string(), "ci-secret".to_string()))
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn creds_from_env_only_id_set_returns_none() {
+        temp_env::with_vars(
+            [
+                ("FLUTE_CLIENT_ID", Some("ci-id")),
+                ("FLUTE_CLIENT_SECRET", None),
+            ],
+            || {
+                assert_eq!(creds_from_env(), None);
+            },
+        );
+    }
+
+    #[test]
+    fn creds_from_env_neither_set_returns_none() {
+        temp_env::with_vars(
+            [
+                ("FLUTE_CLIENT_ID", None::<&str>),
+                ("FLUTE_CLIENT_SECRET", None::<&str>),
+            ],
+            || {
+                assert_eq!(creds_from_env(), None);
             },
         );
     }

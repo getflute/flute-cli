@@ -58,10 +58,10 @@ impl TokenStore {
 }
 
 pub struct OAuth2Fetcher {
-    pub oauth_url: String,
-    pub client_id: String,
-    pub client_secret: String,
-    pub http: reqwest::Client,
+    pub(crate) oauth_url: String,
+    pub(crate) client_id: String,
+    pub(crate) client_secret: String,
+    pub(crate) http: reqwest::Client,
 }
 
 #[derive(serde::Deserialize)]
@@ -149,9 +149,12 @@ mod tests {
 
     #[tokio::test]
     async fn oauth2_fetcher_parses_token_response() {
-        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+        use wiremock::matchers::{body_string_contains, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
         let server = MockServer::start().await;
         Mock::given(method("POST"))
+            .and(body_string_contains("grant_type=client_credentials"))
+            .and(body_string_contains("client_id=test-client-id"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "abc.def.ghi",
                 "expires_in": 3600,
@@ -162,8 +165,8 @@ mod tests {
 
         let fetcher = OAuth2Fetcher {
             oauth_url: format!("{}/oauth2/token", server.uri()),
-            client_id: "id".into(),
-            client_secret: "secret".into(),
+            client_id: "test-client-id".into(),
+            client_secret: "test-secret".into(),
             http: reqwest::Client::new(),
         };
         let (bearer, ttl) = fetcher.fetch().await.unwrap();

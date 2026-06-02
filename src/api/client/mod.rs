@@ -1,6 +1,8 @@
 //! Shared HTTP request core for the Flute API. Per-resource endpoint methods
 //! live in sibling modules (transactions.rs, ach.rs, …).
 
+mod transactions;
+
 use crate::api::error::{ApiError, from_aspnet};
 use crate::auth::token::TokenStore;
 use reqwest::header::ACCEPT;

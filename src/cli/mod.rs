@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 pub mod auth;
 pub mod money;
 pub mod output;
+pub mod transactions;
 pub mod util;
 
 pub use output::OutputFormat;

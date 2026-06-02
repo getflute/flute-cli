@@ -246,6 +246,47 @@ pub enum TransactionsCommand {
         /// Transaction UUID to retrieve (positional).
         id: String,
     },
+
+    /// List transactions for the current merchant (GET /pay-api/v1/transactions).
+    ///
+    /// Fetches a page of transactions and optionally filters client-side.
+    /// **Note**: `--status`, `--from`, and `--to` are applied locally to the
+    /// returned page only — they do NOT send additional server-side query params.
+    /// Use `--limit` and `--page` to control which page is fetched.
+    List {
+        /// Maximum results per page (default 25). Maps to `pageSize` on the API.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+
+        /// Page number to fetch (1-based). Maps to `page` on the API.
+        #[arg(long)]
+        page: Option<u32>,
+
+        /// Fetch only unsettled (no-batch) transactions. Maps to `noBatch=true`.
+        #[arg(long)]
+        unsettled: bool,
+
+        /// Filter results by status (case-insensitive, client-side, current page only).
+        #[arg(long)]
+        status: Option<String>,
+
+        /// Filter results from this date inclusive (YYYY-MM-DD, client-side, current page only).
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Filter results up to this date inclusive (YYYY-MM-DD, client-side, current page only).
+        #[arg(long)]
+        to: Option<String>,
+    },
+
+    /// Show rich details for a single transaction (GET /pay-api/v1/transactions/{id}).
+    ///
+    /// Displays all key fields including the amount breakdown and the
+    /// `availableOperations` list from the API response — no client-side derivation.
+    Inspect {
+        /// Transaction UUID to inspect (positional).
+        id: String,
+    },
 }
 
 #[cfg(test)]

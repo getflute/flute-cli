@@ -245,6 +245,270 @@ pub(crate) fn transaction_table(v: &Value) -> String {
     )
 }
 
+// ── Task 1.8 — list helpers ──────────────────────────────────────────────────
+
+/// Client-side filter for a slice of list-item `Value`s.
+///
+/// Returns a new `Vec<Value>` with cloned items that pass all active filters.
+/// All filters are applied independently and AND-ed together (a transaction
+/// must match every supplied filter to be included). Passing `None` for a
+/// filter means "no constraint" for that field.
+///
+/// ## Status filter
+/// Compares the item's `status` string field case-insensitively.
+///
+/// ## Date filter (`from` / `to`)
+/// Compares the *date portion* of the item's `date` field (or
+/// `transactionDateTime` as a fallback). Accepts ISO 8601 date-times or plain
+/// YYYY-MM-DD strings; only the leading `YYYY-MM-DD` prefix is compared so
+/// time-zone suffixes are ignored. Bounds are **inclusive**.
+///
+/// Items with a missing or unparseable `date` field are excluded when any
+/// date filter is active.
+///
+/// **Important**: filters operate on the page returned by the server. They do
+/// not trigger additional fetches or pagination.
+pub(crate) fn filter_items(
+    items: &[serde_json::Value],
+    status: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Vec<serde_json::Value> {
+    items
+        .iter()
+        .filter(|item| {
+            // Status filter (case-insensitive)
+            if let Some(wanted) = status {
+                let actual = item.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                if !actual.eq_ignore_ascii_case(wanted) {
+                    return false;
+                }
+            }
+
+            // Date filters — extract the YYYY-MM-DD prefix from the item's date field
+            if from.is_some() || to.is_some() {
+                let date_str = item
+                    .get("date")
+                    .or_else(|| item.get("transactionDateTime"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                // Grab just the date portion (first 10 chars = "YYYY-MM-DD")
+                let item_date: &str = if date_str.len() >= 10 {
+                    &date_str[..10]
+                } else {
+                    return false; // can't compare — exclude
+                };
+
+                if let Some(f) = from
+                    && item_date < f
+                {
+                    return false;
+                }
+                if let Some(t) = to
+                    && item_date > t
+                {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .cloned()
+        .collect()
+}
+
+/// Build the "table" output string for the `list` command.
+///
+/// Columns (fixed widths via [`crate::cli::output::fit`]):
+/// - `ID` (36)  `DATE` (10)  `STATUS` (12)  `TYPE` (14)  `AMOUNT` (10)  `CUSTOMER` (24)
+///
+/// Amount is read from `totalAmount` (top-level) or `amount.totalAmount` (nested object).
+pub(crate) fn transaction_list_table(items: &[serde_json::Value]) -> String {
+    use crate::cli::output::fit;
+
+    let header = format!(
+        "{:<36}  {:<10}  {:<12}  {:<14}  {:<10}  {:<24}",
+        "ID", "DATE", "STATUS", "TYPE", "AMOUNT", "CUSTOMER"
+    );
+    let separator = "-".repeat(36 + 2 + 10 + 2 + 12 + 2 + 14 + 2 + 10 + 2 + 24);
+
+    let mut rows = vec![header, separator];
+
+    for item in items {
+        let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("—");
+
+        let date = item
+            .get("date")
+            .and_then(|v| v.as_str())
+            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .unwrap_or("—");
+
+        let status = item.get("status").and_then(|v| v.as_str()).unwrap_or("—");
+
+        let txn_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("—");
+
+        // Amount: prefer top-level totalAmount, then nested amount.totalAmount
+        let amount = match item.get("totalAmount").and_then(|v| v.as_f64()) {
+            Some(f) => format!("{f:.2}"),
+            None => match item.get("amount") {
+                Some(serde_json::Value::Object(obj)) => obj
+                    .get("totalAmount")
+                    .and_then(|v| v.as_f64())
+                    .map(|f| format!("{f:.2}"))
+                    .unwrap_or_else(|| "—".to_string()),
+                _ => "—".to_string(),
+            },
+        };
+
+        let customer = item
+            .get("customerName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("—");
+
+        rows.push(format!(
+            "{}  {}  {}  {}  {}  {}",
+            fit(id, 36),
+            fit(date, 10),
+            fit(status, 12),
+            fit(txn_type, 14),
+            fit(&amount, 10),
+            fit(customer, 24),
+        ));
+    }
+
+    rows.join("\n")
+}
+
+/// Build the "quiet" output string for the `list` command: one `id` per line.
+pub(crate) fn transaction_list_quiet(items: &[serde_json::Value]) -> String {
+    items
+        .iter()
+        .filter_map(|item| item.get("id").and_then(|v| v.as_str()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Render the `list` command output according to the requested output format.
+///
+/// The `filtered` slice is the post-filter view; `total` is the server's
+/// original total (preserved in the JSON envelope even though the item count
+/// may be smaller after client-side filtering).
+pub(crate) fn render_list(
+    filtered: &[serde_json::Value],
+    total: u64,
+    fmt: crate::cli::output::OutputFormat,
+    environment: &str,
+) -> anyhow::Result<()> {
+    use crate::cli::output::{Envelope, OutputFormat};
+    match fmt {
+        OutputFormat::Json => {
+            let data = serde_json::json!({
+                "items": filtered,
+                "total": total,
+                "filtered_count": filtered.len()
+            });
+            let envelope = Envelope::new("transaction_list", data, environment, None);
+            println!("{}", serde_json::to_string_pretty(&envelope)?);
+        }
+        OutputFormat::Table => {
+            println!("{}", transaction_list_table(filtered));
+        }
+        OutputFormat::Quiet => {
+            let out = transaction_list_quiet(filtered);
+            if !out.is_empty() {
+                println!("{out}");
+            }
+        }
+    }
+    Ok(())
+}
+
+// ── Task 1.9 — inspect helper ────────────────────────────────────────────────
+
+/// Build the rich "inspect" table view for a single `GetIsvTransactionResponseDto`.
+///
+/// Shows all key fields including the amount breakdown from the `amount` object
+/// and the `availableOperations` array (used verbatim — no re-derivation).
+///
+/// Returns "—" for any field that is absent or null; never panics on missing data.
+pub(crate) fn inspect_table(v: &serde_json::Value) -> String {
+    let get_str = |key: &str| -> String {
+        v.get(key)
+            .and_then(|x| x.as_str())
+            .unwrap_or("—")
+            .to_string()
+    };
+
+    let txn_id = get_str("transactionId");
+    let status = get_str("status");
+    let currency = get_str("currency");
+    let auth_code = get_str("authCode");
+    let response_code = get_str("responseCode");
+    let response_desc = get_str("responseDescription");
+    let card_data_source = get_str("cardDataSource");
+    let customer_pan = get_str("customerPan");
+    let avs_response = get_str("avsResponse");
+
+    // Amount breakdown from the nested AmountIsvDto object
+    let (base_amount, surcharge_amount, tip_amount, total_amount) = match v.get("amount") {
+        Some(serde_json::Value::Object(obj)) => {
+            let fmt_f = |key: &str| -> String {
+                obj.get(key)
+                    .and_then(|v| v.as_f64())
+                    .map(|f| format!("{f:.2}"))
+                    .unwrap_or_else(|| "—".to_string())
+            };
+            (
+                fmt_f("baseAmount"),
+                fmt_f("surchargeAmount"),
+                fmt_f("tipAmount"),
+                fmt_f("totalAmount"),
+            )
+        }
+        _ => (
+            "—".to_string(),
+            "—".to_string(),
+            "—".to_string(),
+            "—".to_string(),
+        ),
+    };
+
+    // availableOperations — use the API's list verbatim
+    let ops = match v.get("availableOperations") {
+        Some(serde_json::Value::Array(arr)) => {
+            if arr.is_empty() {
+                "none".to_string()
+            } else {
+                arr.iter()
+                    .filter_map(|op| op.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        }
+        _ => "—".to_string(),
+    };
+
+    format!(
+        "transactionId:       {txn_id}\n\
+         status:              {status}\n\
+         currency:            {currency}\n\
+         authCode:            {auth_code}\n\
+         responseCode:        {response_code}\n\
+         responseDescription: {response_desc}\n\
+         cardDataSource:      {card_data_source}\n\
+         customerPan:         {customer_pan}\n\
+         avsResponse:         {avs_response}\n\
+         \n\
+         Amount breakdown:\n\
+           baseAmount:        {base_amount}\n\
+           surchargeAmount:   {surcharge_amount}\n\
+           tipAmount:         {tip_amount}\n\
+           totalAmount:       {total_amount}\n\
+         \n\
+         Available operations: {ops}"
+    )
+}
+
 // ── CLI handlers ─────────────────────────────────────────────────────────────
 
 /// Selects which card-transaction endpoint to call.
@@ -439,6 +703,7 @@ pub(crate) fn build_tip_adjust_body(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::str::FromStr;
 
     // ── parse_exp (Task 1.2) ──────────────────────────────────────────────────
@@ -939,6 +1204,323 @@ mod tests {
             serde_json::to_string(&body["tipAmount"]).unwrap(),
             "3.50",
             "tipAmount must serialise as exact decimal"
+        );
+    }
+
+    // ── filter_items (Task 1.8) ───────────────────────────────────────────────
+
+    fn sample_list_items() -> Vec<Value> {
+        vec![
+            json!({
+                "id": "txn-001",
+                "status": "Approved",
+                "date": "2026-05-01T10:00:00Z",
+                "totalAmount": 100.00,
+                "customerName": "Alice",
+                "type": "Sale"
+            }),
+            json!({
+                "id": "txn-002",
+                "status": "Declined",
+                "date": "2026-05-15T12:00:00Z",
+                "totalAmount": 50.00,
+                "customerName": "Bob",
+                "type": "Sale"
+            }),
+            json!({
+                "id": "txn-003",
+                "status": "Approved",
+                "date": "2026-06-01T09:00:00Z",
+                "totalAmount": 200.00,
+                "customerName": "Carol",
+                "type": "Refund"
+            }),
+        ]
+    }
+
+    #[test]
+    fn filter_items_no_filters_returns_all() {
+        let items = sample_list_items();
+        let result = filter_items(&items, None, None, None);
+        assert_eq!(result.len(), 3, "no filters should return all 3 items");
+    }
+
+    #[test]
+    fn filter_items_status_match_case_insensitive() {
+        let items = sample_list_items();
+
+        let approved = filter_items(&items, Some("approved"), None, None);
+        assert_eq!(approved.len(), 2, "should match 2 Approved transactions");
+        assert!(approved.iter().all(|i| i["status"] == "Approved"));
+
+        let declined = filter_items(&items, Some("DECLINED"), None, None);
+        assert_eq!(declined.len(), 1);
+        assert_eq!(declined[0]["id"], "txn-002");
+    }
+
+    #[test]
+    fn filter_items_status_no_match_returns_empty() {
+        let items = sample_list_items();
+        let result = filter_items(&items, Some("Voided"), None, None);
+        assert_eq!(result.len(), 0, "no Voided items should return empty");
+    }
+
+    #[test]
+    fn filter_items_from_date_inclusive_lower_bound() {
+        let items = sample_list_items();
+        // from = 2026-05-15 → should include txn-002 and txn-003, exclude txn-001
+        let result = filter_items(&items, None, Some("2026-05-15"), None);
+        assert_eq!(result.len(), 2);
+        let ids: Vec<&str> = result.iter().map(|i| i["id"].as_str().unwrap()).collect();
+        assert!(
+            ids.contains(&"txn-002"),
+            "txn-002 (on boundary) must be included"
+        );
+        assert!(ids.contains(&"txn-003"), "txn-003 (after) must be included");
+        assert!(
+            !ids.contains(&"txn-001"),
+            "txn-001 (before) must be excluded"
+        );
+    }
+
+    #[test]
+    fn filter_items_to_date_inclusive_upper_bound() {
+        let items = sample_list_items();
+        // to = 2026-05-15 → should include txn-001 and txn-002, exclude txn-003
+        let result = filter_items(&items, None, None, Some("2026-05-15"));
+        assert_eq!(result.len(), 2);
+        let ids: Vec<&str> = result.iter().map(|i| i["id"].as_str().unwrap()).collect();
+        assert!(
+            ids.contains(&"txn-001"),
+            "txn-001 (before) must be included"
+        );
+        assert!(
+            ids.contains(&"txn-002"),
+            "txn-002 (on boundary) must be included"
+        );
+        assert!(
+            !ids.contains(&"txn-003"),
+            "txn-003 (after) must be excluded"
+        );
+    }
+
+    #[test]
+    fn filter_items_date_range_combination() {
+        let items = sample_list_items();
+        // from = 2026-05-01, to = 2026-05-31 → only txn-001 and txn-002
+        let result = filter_items(&items, None, Some("2026-05-01"), Some("2026-05-31"));
+        assert_eq!(result.len(), 2);
+        let ids: Vec<&str> = result.iter().map(|i| i["id"].as_str().unwrap()).collect();
+        assert!(ids.contains(&"txn-001"));
+        assert!(ids.contains(&"txn-002"));
+        assert!(!ids.contains(&"txn-003"));
+    }
+
+    #[test]
+    fn filter_items_status_and_date_combined() {
+        let items = sample_list_items();
+        // status=Approved AND from=2026-06-01 → only txn-003
+        let result = filter_items(&items, Some("Approved"), Some("2026-06-01"), None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0]["id"], "txn-003");
+    }
+
+    #[test]
+    fn filter_items_missing_date_excluded_when_date_filter_active() {
+        let items = vec![json!({ "id": "no-date", "status": "Approved" })];
+        let result = filter_items(&items, None, Some("2026-01-01"), None);
+        assert_eq!(
+            result.len(),
+            0,
+            "item with no date should be excluded when date filter active"
+        );
+    }
+
+    // ── transaction_list_table golden test (Task 1.8) ─────────────────────────
+
+    #[test]
+    fn transaction_list_table_contains_header_and_row() {
+        let items = sample_list_items();
+        let table = transaction_list_table(&items);
+
+        // Header
+        assert!(table.contains("ID"), "must contain ID header");
+        assert!(table.contains("DATE"), "must contain DATE header");
+        assert!(table.contains("STATUS"), "must contain STATUS header");
+        assert!(table.contains("TYPE"), "must contain TYPE header");
+        assert!(table.contains("AMOUNT"), "must contain AMOUNT header");
+        assert!(table.contains("CUSTOMER"), "must contain CUSTOMER header");
+
+        // Row data
+        assert!(table.contains("txn-001"), "must contain first txn id");
+        assert!(
+            table.contains("2026-05-01"),
+            "must contain date portion only"
+        );
+        assert!(table.contains("Approved"), "must contain status");
+        assert!(table.contains("100.00"), "must contain formatted amount");
+        assert!(table.contains("Alice"), "must contain customer name");
+    }
+
+    #[test]
+    fn transaction_list_table_empty_items_shows_header_only() {
+        let table = transaction_list_table(&[]);
+        assert!(
+            table.contains("ID"),
+            "header must still appear for empty list"
+        );
+        // No data rows beyond header + separator
+        let lines: Vec<&str> = table.lines().collect();
+        assert_eq!(lines.len(), 2, "empty list: only header + separator");
+    }
+
+    #[test]
+    fn transaction_list_table_reads_nested_amount_object() {
+        let items = vec![json!({
+            "id": "txn-nested",
+            "status": "Approved",
+            "date": "2026-06-02T00:00:00Z",
+            "amount": { "totalAmount": 75.50 },
+            "customerName": "Dave",
+            "type": "Sale"
+        })];
+        let table = transaction_list_table(&items);
+        assert!(
+            table.contains("75.50"),
+            "must read totalAmount from nested amount object"
+        );
+    }
+
+    // ── transaction_list_quiet golden test (Task 1.8) ─────────────────────────
+
+    #[test]
+    fn transaction_list_quiet_one_id_per_line() {
+        let items = sample_list_items();
+        let quiet = transaction_list_quiet(&items);
+        let lines: Vec<&str> = quiet.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "txn-001");
+        assert_eq!(lines[1], "txn-002");
+        assert_eq!(lines[2], "txn-003");
+    }
+
+    #[test]
+    fn transaction_list_quiet_empty_returns_empty_string() {
+        let quiet = transaction_list_quiet(&[]);
+        assert_eq!(quiet, "", "empty items must produce empty string");
+    }
+
+    // ── inspect_table golden test (Task 1.9) ─────────────────────────────────
+
+    fn sample_inspect_response() -> Value {
+        json!({
+            "transactionId": "txn-inspect-abc",
+            "status": "Approved",
+            "currency": "USD",
+            "authCode": "AUTH42",
+            "responseCode": "00",
+            "responseDescription": "Approved",
+            "cardDataSource": "Internet",
+            "customerPan": "411111XXXXXX1111",
+            "avsResponse": "Y",
+            "amount": {
+                "baseAmount": 95.00,
+                "surchargeAmount": 2.50,
+                "tipAmount": 5.00,
+                "totalAmount": 102.50
+            },
+            "availableOperations": ["void", "refund", "tip-adjust"]
+        })
+    }
+
+    #[test]
+    fn inspect_table_contains_key_fields() {
+        let v = sample_inspect_response();
+        let table = inspect_table(&v);
+
+        assert!(
+            table.contains("txn-inspect-abc"),
+            "must contain transactionId"
+        );
+        assert!(table.contains("Approved"), "must contain status");
+        assert!(table.contains("USD"), "must contain currency");
+        assert!(table.contains("AUTH42"), "must contain authCode");
+        assert!(table.contains("00"), "must contain responseCode");
+        assert!(table.contains("Internet"), "must contain cardDataSource");
+        assert!(
+            table.contains("411111XXXXXX1111"),
+            "must contain customerPan"
+        );
+        assert!(table.contains("Y"), "must contain avsResponse");
+    }
+
+    #[test]
+    fn inspect_table_shows_amount_breakdown() {
+        let v = sample_inspect_response();
+        let table = inspect_table(&v);
+
+        assert!(table.contains("95.00"), "must contain baseAmount");
+        assert!(table.contains("2.50"), "must contain surchargeAmount");
+        assert!(table.contains("5.00"), "must contain tipAmount");
+        assert!(table.contains("102.50"), "must contain totalAmount");
+    }
+
+    #[test]
+    fn inspect_table_shows_available_operations() {
+        let v = sample_inspect_response();
+        let table = inspect_table(&v);
+
+        assert!(table.contains("void"), "must contain void operation");
+        assert!(table.contains("refund"), "must contain refund operation");
+        assert!(
+            table.contains("tip-adjust"),
+            "must contain tip-adjust operation"
+        );
+        assert!(
+            table.contains("Available operations:"),
+            "must contain Available operations label"
+        );
+    }
+
+    #[test]
+    fn inspect_table_empty_available_operations_shows_none() {
+        let v = json!({
+            "transactionId": "txn-no-ops",
+            "status": "Settled",
+            "availableOperations": []
+        });
+        let table = inspect_table(&v);
+        assert!(
+            table.contains("none"),
+            "empty availableOperations must render as 'none'"
+        );
+    }
+
+    #[test]
+    fn inspect_table_missing_fields_render_dash() {
+        // Completely minimal response — must not panic
+        let v = json!({ "transactionId": "txn-minimal" });
+        let table = inspect_table(&v);
+        assert!(table.contains("txn-minimal"), "must contain transactionId");
+        // All missing fields should render as "—"
+        let dash_count = table.matches('—').count();
+        assert!(
+            dash_count >= 4,
+            "missing fields must render as — (got {dash_count} dashes)"
+        );
+    }
+
+    #[test]
+    fn inspect_table_null_available_operations_renders_dash() {
+        let v = json!({
+            "transactionId": "txn-null-ops",
+            "availableOperations": null
+        });
+        let table = inspect_table(&v);
+        // Should contain "—" for the ops field (null, not an array)
+        assert!(
+            table.contains('—'),
+            "null availableOperations must render as —"
         );
     }
 }

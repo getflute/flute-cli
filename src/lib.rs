@@ -149,7 +149,8 @@ async fn dispatch_transactions(
     use cli::money::parse_amount;
     use cli::transactions::{
         CardTxnKind, SaleArgs, build_capture_body, build_refund_body, build_settle_body,
-        build_tip_adjust_body, build_void_body, execute_card_txn, render_transaction,
+        build_tip_adjust_body, build_void_body, execute_card_txn, filter_items, inspect_table,
+        render_list, render_transaction,
     };
 
     match tc {
@@ -282,6 +283,52 @@ async fn dispatch_transactions(
             let (p, api) = build_client(profile)?;
             let result = api.get_transaction(&id).await?;
             render_transaction(&result, output_fmt, &p.name)
+        }
+        TransactionsCommand::List {
+            limit,
+            page,
+            unsettled,
+            status,
+            from,
+            to,
+        } => {
+            let no_batch = if unsettled { Some(true) } else { None };
+            let (p, api) = build_client(profile)?;
+            let result = api.list_transactions(page, Some(limit), no_batch).await?;
+
+            let items = result
+                .get("items")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let total = result.get("total").and_then(|v| v.as_u64()).unwrap_or(0);
+
+            let filtered = filter_items(&items, status.as_deref(), from.as_deref(), to.as_deref());
+
+            render_list(&filtered, total, output_fmt, &p.name)
+        }
+        TransactionsCommand::Inspect { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.get_transaction(&id).await?;
+
+            match output_fmt {
+                cli::OutputFormat::Json => {
+                    let envelope =
+                        cli::output::Envelope::new("transaction", result.clone(), &p.name, None);
+                    println!("{}", serde_json::to_string_pretty(&envelope)?);
+                    Ok(())
+                }
+                cli::OutputFormat::Table => {
+                    println!("{}", inspect_table(&result));
+                    Ok(())
+                }
+                cli::OutputFormat::Quiet => {
+                    if let Some(id) = result.get("transactionId").and_then(|v| v.as_str()) {
+                        println!("{id}");
+                    }
+                    Ok(())
+                }
+            }
         }
     }
 }

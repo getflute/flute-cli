@@ -69,6 +69,44 @@ impl ApiClient {
         let path = format!("/pay-api/v1/transactions/{id}");
         self.send(Method::GET, &path, None).await
     }
+
+    /// GET `/pay-api/v1/transactions` — list transactions with optional pagination and filtering.
+    ///
+    /// Only query parameters that are `Some` are appended to the URL.
+    ///
+    /// - `page`      → `page` query param
+    /// - `page_size` → `pageSize` query param
+    /// - `no_batch`  → `noBatch` query param (pass `true` to fetch unsettled txns)
+    pub async fn list_transactions(
+        &self,
+        page: Option<u32>,
+        page_size: Option<u32>,
+        no_batch: Option<bool>,
+    ) -> Result<serde_json::Value, ApiError> {
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(p) = page {
+            params.push(("page", p.to_string()));
+        }
+        if let Some(ps) = page_size {
+            params.push(("pageSize", ps.to_string()));
+        }
+        if let Some(nb) = no_batch {
+            params.push(("noBatch", nb.to_string()));
+        }
+
+        let path = if params.is_empty() {
+            "/pay-api/v1/transactions".to_string()
+        } else {
+            let qs: String = params
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join("&");
+            format!("/pay-api/v1/transactions?{qs}")
+        };
+
+        self.send(Method::GET, &path, None).await
+    }
 }
 
 #[cfg(test)]
@@ -312,5 +350,70 @@ mod tests {
         let result = api.get_transaction("txn-get-abc").await.unwrap();
         assert_eq!(result["transactionId"], "txn-get-abc");
         assert_eq!(result["status"], "Approved");
+    }
+
+    // ── Task 1.8 wiremock test ────────────────────────────────────────────────
+
+    /// Wiremock test: `list_transactions` GETs `/pay-api/v1/transactions` with
+    /// the correct query params and returns the page object.
+    #[tokio::test]
+    async fn list_transactions_builds_query_string_correctly() {
+        use wiremock::matchers::query_param;
+
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/pay-api/v1/transactions"))
+            .and(header("authorization", "Bearer test-token"))
+            .and(query_param("pageSize", "25"))
+            .and(query_param("page", "1"))
+            .and(query_param("noBatch", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "items": [
+                    {
+                        "id": "txn-list-001",
+                        "status": "Approved",
+                        "date": "2026-06-01T10:00:00Z",
+                        "totalAmount": 50.00,
+                        "customerName": "Test User",
+                        "type": "Sale"
+                    }
+                ],
+                "total": 1
+            })))
+            .mount(&server)
+            .await;
+
+        let api = test_client(server.uri());
+
+        let result = api
+            .list_transactions(Some(1), Some(25), Some(true))
+            .await
+            .unwrap();
+        assert_eq!(result["total"], 1);
+        let items = result["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["id"], "txn-list-001");
+    }
+
+    /// Wiremock test: `list_transactions` with no params omits query string entirely.
+    #[tokio::test]
+    async fn list_transactions_no_params_omits_query_string() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/pay-api/v1/transactions"))
+            .and(header("authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "items": [],
+                "total": 0
+            })))
+            .mount(&server)
+            .await;
+
+        let api = test_client(server.uri());
+
+        let result = api.list_transactions(None, None, None).await.unwrap();
+        assert_eq!(result["total"], 0);
     }
 }

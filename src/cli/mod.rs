@@ -17,8 +17,10 @@ pub struct Cli {
     pub profile: String,
 
     /// Output format: table (default), json, or quiet (id only).
-    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Table)]
-    pub output: OutputFormat,
+    /// When omitted, falls back to the `output` key in ~/.flute/config.toml,
+    /// then to `table`.
+    #[arg(long, global = true, value_enum)]
+    pub output: Option<OutputFormat>,
 
     /// ISV merchant context for commands whose endpoints accept it.
     #[arg(long, global = true)]

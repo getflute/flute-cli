@@ -10,6 +10,20 @@ pub enum OutputFormat {
     Quiet,
 }
 
+impl OutputFormat {
+    /// Parse a config-file value ("table", "json", "quiet") case-insensitively.
+    /// Returns `None` for unrecognized strings so callers can fall through to
+    /// the next precedence layer (or the hard-coded default).
+    pub fn from_config_str(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "table" => Some(Self::Table),
+            "json" => Some(Self::Json),
+            "quiet" => Some(Self::Quiet),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct Meta {
     pub environment: String,

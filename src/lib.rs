@@ -25,12 +25,12 @@ pub(crate) fn build_client(profile: &str) -> anyhow::Result<(config::Profile, ap
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()?;
-    let fetcher = Arc::new(auth::token::OAuth2Fetcher {
-        oauth_url: p.oauth_url.clone(),
-        client_id: id,
-        client_secret: secret,
-        http: http.clone(),
-    });
+    let fetcher = Arc::new(auth::token::OAuth2Fetcher::new(
+        p.oauth_url.clone(),
+        id,
+        secret,
+        http.clone(),
+    ));
     let api = api::ApiClient {
         base_url: p.api_base_url.clone(),
         http,

@@ -64,6 +64,24 @@ pub struct OAuth2Fetcher {
     pub(crate) http: reqwest::Client,
 }
 
+impl OAuth2Fetcher {
+    /// Public constructor so integration tests (and external callers) can
+    /// build an `OAuth2Fetcher` without accessing the `pub(crate)` fields.
+    pub fn new(
+        oauth_url: impl Into<String>,
+        client_id: impl Into<String>,
+        client_secret: impl Into<String>,
+        http: reqwest::Client,
+    ) -> Self {
+        Self {
+            oauth_url: oauth_url.into(),
+            client_id: client_id.into(),
+            client_secret: client_secret.into(),
+            http,
+        }
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct TokenResp {
     access_token: String,

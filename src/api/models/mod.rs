@@ -12,7 +12,7 @@ pub mod transactions;
 /// double-precision amount fields.
 ///
 /// # Panics
-/// Never: `d.normalize().to_string()` is always a valid decimal literal.
+/// Never: `d.to_string()` always produces a valid JSON number literal, so parsing it back cannot fail.
 pub fn to_amount_number(d: rust_decimal::Decimal) -> serde_json::Value {
     // `Decimal::to_string()` emits the exact decimal string (e.g. "100.00",
     // "0.10") without scientific notation and without float rounding.

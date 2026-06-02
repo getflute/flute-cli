@@ -115,6 +115,96 @@ pub(crate) fn resolve_output(
         .unwrap_or(cli::OutputFormat::Table)
 }
 
+async fn dispatch_transactions(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    tc: cli::TransactionsCommand,
+) -> anyhow::Result<()> {
+    use cli::TransactionsCommand;
+    use cli::money::parse_amount;
+
+    match tc {
+        TransactionsCommand::Sale {
+            amount,
+            card,
+            exp,
+            cvv,
+            tip_amount,
+            customer_id,
+            payment_method_id,
+            currency_id,
+            card_data_source,
+            l2_tax_rate,
+            l3_invoice,
+            l3_po,
+            l3_product,
+            reference_id,
+        } => {
+            let amount = parse_amount(&amount)?;
+            let tip_amount = tip_amount.as_deref().map(parse_amount).transpose()?;
+            let l2_tax_rate = l2_tax_rate.as_deref().map(parse_amount).transpose()?;
+            cli::transactions::sale(
+                profile,
+                output_fmt,
+                amount,
+                card,
+                exp,
+                cvv,
+                tip_amount,
+                customer_id,
+                payment_method_id,
+                currency_id,
+                card_data_source,
+                l2_tax_rate,
+                l3_invoice,
+                l3_po,
+                l3_product,
+                reference_id,
+            )
+            .await
+        }
+        TransactionsCommand::Auth {
+            amount,
+            card,
+            exp,
+            cvv,
+            tip_amount,
+            customer_id,
+            payment_method_id,
+            currency_id,
+            card_data_source,
+            l2_tax_rate,
+            l3_invoice,
+            l3_po,
+            l3_product,
+            reference_id,
+        } => {
+            let amount = parse_amount(&amount)?;
+            let tip_amount = tip_amount.as_deref().map(parse_amount).transpose()?;
+            let l2_tax_rate = l2_tax_rate.as_deref().map(parse_amount).transpose()?;
+            cli::transactions::auth_txn(
+                profile,
+                output_fmt,
+                amount,
+                card,
+                exp,
+                cvv,
+                tip_amount,
+                customer_id,
+                payment_method_id,
+                currency_id,
+                card_data_source,
+                l2_tax_rate,
+                l3_invoice,
+                l3_po,
+                l3_product,
+                reference_id,
+            )
+            .await
+        }
+    }
+}
+
 pub fn run() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
     let profile = cli.profile.clone();
@@ -150,6 +240,9 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Auth(cli::AuthCommand::Token) => cli::auth::token(&profile).await,
             cli::Command::Ping => cli::util::ping(&profile, output_fmt).await,
             cli::Command::Version => cli::util::version(&profile, output_fmt),
+            cli::Command::Transactions(tc) => {
+                dispatch_transactions(&profile, output_fmt, *tc).await
+            }
         };
 
         // On failure: always call process::exit with the semantic exit code.

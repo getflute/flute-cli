@@ -128,7 +128,8 @@ pub fn exit_code_for(err: &anyhow::Error) -> i32 {
 }
 
 /// Trim/pad a string to a column width with an ellipsis (table mode helper).
-pub fn fit(s: &str, width: usize) -> String {
+#[allow(dead_code)]
+pub(crate) fn fit(s: &str, width: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= width {
         format!("{s:<width$}")
@@ -222,6 +223,30 @@ mod tests {
         let env = ErrorJson::from_anyhow(&e);
         assert_eq!(env.kind, "client");
         assert!(env.message.contains("garbage"));
+    }
+
+    #[test]
+    fn exit_code_for_routes_apierror_variants() {
+        // Auth → 2
+        let auth_err: anyhow::Error = ApiError::Auth("no token".into()).into();
+        assert_eq!(exit_code_for(&auth_err), 2);
+
+        // Decode → 1
+        let decode_err: anyhow::Error = ApiError::Decode("bad json".into()).into();
+        assert_eq!(exit_code_for(&decode_err), 1);
+
+        // Api with 404 → 4
+        let api_404: anyhow::Error = ApiError::Api {
+            status: 404,
+            correlation_id: None,
+            message: "not found".into(),
+        }
+        .into();
+        assert_eq!(exit_code_for(&api_404), 4);
+
+        // Plain anyhow (non-ApiError) → 1
+        let plain = anyhow::anyhow!("x");
+        assert_eq!(exit_code_for(&plain), 1);
     }
 
     #[test]

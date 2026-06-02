@@ -40,7 +40,7 @@ pub(crate) struct AspNetError {
     pub exception_type: Option<String>,
 }
 
-pub fn from_aspnet(status: u16, body: &str) -> ApiError {
+pub(crate) fn from_aspnet(status: u16, body: &str) -> ApiError {
     match serde_json::from_str::<AspNetError>(body) {
         Ok(e) => {
             // Title is often generic (e.g. "Internal server error") — combine

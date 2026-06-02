@@ -167,11 +167,12 @@ mod tests {
     async fn ping_hits_pay_int_api_ping_and_returns_body() {
         use wiremock::{
             Mock, MockServer, ResponseTemplate,
-            matchers::{method, path},
+            matchers::{header, method, path},
         };
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/pay-int-api/ping"))
+            .and(header("authorization", "Bearer test-token"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
             )
@@ -181,5 +182,68 @@ mod tests {
         let api = super::test_client(server.uri());
         let body = api.ping().await.unwrap();
         assert_eq!(body["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn unauthorized_triggers_token_refresh_and_retries() {
+        use crate::auth::token::{Fetcher, TokenStore};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::Duration;
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        // A fetcher that counts how many times fetch() is called and returns
+        // tokens token-0, token-1, … so we can verify it was called twice.
+        struct CountingFetcher {
+            calls: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl Fetcher for CountingFetcher {
+            async fn fetch(&self) -> anyhow::Result<(String, Duration)> {
+                let n = self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok((format!("token-{n}"), Duration::from_secs(3600)))
+            }
+        }
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let fetcher = CountingFetcher {
+            calls: counter.clone(),
+        };
+        let tokens = TokenStore::new(Arc::new(fetcher));
+
+        let server = MockServer::start().await;
+
+        // First request → 401 (fires once only).
+        Mock::given(method("GET"))
+            .and(path("/pay-int-api/ping"))
+            .respond_with(ResponseTemplate::new(401))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Second request (after token refresh) → 200 with body.
+        Mock::given(method("GET"))
+            .and(path("/pay-int-api/ping"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
+            )
+            .mount(&server)
+            .await;
+
+        let api = super::ApiClient {
+            base_url: server.uri(),
+            http: reqwest::Client::new(),
+            tokens,
+        };
+
+        let body = api.ping().await.unwrap();
+        assert_eq!(body["status"], "ok");
+        // fetch() must have been called once for the initial request and once
+        // after invalidate() — proving the 401-retry path works end-to-end.
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 }

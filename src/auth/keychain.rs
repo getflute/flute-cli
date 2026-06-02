@@ -13,8 +13,7 @@ struct StoredCreds {
 }
 
 fn entry(profile: &str) -> Result<Entry> {
-    Entry::new(SERVICE, profile)
-        .with_context(|| format!("keyring entry for profile {profile}"))
+    Entry::new(SERVICE, profile).with_context(|| format!("keyring entry for profile {profile}"))
 }
 
 pub fn store_client_credentials(profile: &str, client_id: &str, client_secret: &str) -> Result<()> {
@@ -68,10 +67,7 @@ mod tests {
             ],
             || {
                 let got = load_with_env_fallback("sandbox").unwrap();
-                assert_eq!(
-                    got,
-                    Some(("env-id".to_string(), "env-secret".to_string()))
-                );
+                assert_eq!(got, Some(("env-id".to_string(), "env-secret".to_string())));
             },
         );
     }

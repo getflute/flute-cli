@@ -56,7 +56,7 @@ impl Profile {
         // NOTE: `sandbox` points at UAT until the real sandbox env ships.
         Self {
             name: "sandbox".into(),
-            api_base_url: "https://api.uat.arise.risewithaurora.com".into(),
+            api_base_url: "https://sandbox.api.uat.flute.com".into(),
             oauth_url: "https://sandbox.oauth.api.uat.flute.com/oauth2/token".into(),
         }
     }
@@ -90,7 +90,7 @@ mod tests {
     fn sandbox_points_at_uat() {
         let p = Profile::sandbox();
         assert_eq!(p.name, "sandbox");
-        assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com");
+        assert_eq!(p.api_base_url, "https://sandbox.api.uat.flute.com");
         assert_eq!(
             p.oauth_url,
             "https://sandbox.oauth.api.uat.flute.com/oauth2/token"

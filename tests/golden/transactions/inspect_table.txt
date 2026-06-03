@@ -1,0 +1,17 @@
+transactionId:       txn-inspect-golden-001
+status:              Approved
+currency:            USD
+authCode:            INSP77
+responseCode:        00
+responseDescription: Approved
+cardDataSource:      Internet
+customerPan:         411111XXXXXX1111
+avsResponse:         Y
+
+Amount breakdown:
+baseAmount:        100.00
+surchargeAmount:   1.50
+tipAmount:         5.00
+totalAmount:       106.50
+
+Available operations: void, refund, tip-adjust

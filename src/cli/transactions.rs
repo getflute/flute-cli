@@ -698,6 +698,122 @@ pub(crate) fn build_tip_adjust_body(
     Value::Object(obj)
 }
 
+// ── Golden-file output regression tests ───────────────────────────────────────
+
+#[cfg(test)]
+mod golden {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use serde_json::json;
+
+    // ── Representative fixtures ──────────────────────────────────────────────
+
+    fn sale_response() -> Value {
+        json!({
+            "transactionId": "txn-sale-golden-001",
+            "status": "Approved",
+            "amount": {
+                "totalAmount": 125.50,
+                "baseAmount": 120.00,
+                "surchargeAmount": 2.00,
+                "tipAmount": 3.50
+            },
+            "authCode": "GOLD42",
+            "responseDescription": "Approved"
+        })
+    }
+
+    fn inspect_response() -> Value {
+        json!({
+            "transactionId": "txn-inspect-golden-001",
+            "status": "Approved",
+            "currency": "USD",
+            "authCode": "INSP77",
+            "responseCode": "00",
+            "responseDescription": "Approved",
+            "cardDataSource": "Internet",
+            "customerPan": "411111XXXXXX1111",
+            "avsResponse": "Y",
+            "amount": {
+                "baseAmount": 100.00,
+                "surchargeAmount": 1.50,
+                "tipAmount": 5.00,
+                "totalAmount": 106.50
+            },
+            "availableOperations": ["void", "refund", "tip-adjust"]
+        })
+    }
+
+    fn list_items() -> Vec<Value> {
+        vec![
+            json!({
+                "id": "txn-list-golden-001",
+                "date": "2026-05-01T10:00:00Z",
+                "status": "Approved",
+                "type": "Sale",
+                "totalAmount": 100.00,
+                "customerName": "Alice Smith"
+            }),
+            json!({
+                "id": "txn-list-golden-002",
+                "date": "2026-05-15T14:30:00Z",
+                "status": "Declined",
+                "type": "Sale",
+                "totalAmount": 50.00,
+                "customerName": "Bob Jones"
+            }),
+            json!({
+                "id": "txn-list-golden-003",
+                "date": "2026-06-01T09:15:00Z",
+                "status": "Approved",
+                "type": "Refund",
+                "totalAmount": 25.00,
+                "customerName": "Carol White"
+            }),
+        ]
+    }
+
+    // ── Golden-file tests ────────────────────────────────────────────────────
+
+    /// Golden test: `transaction_table` output for a representative sale response.
+    ///
+    /// The golden file at `tests/golden/transactions/sale_table.txt` was produced
+    /// by calling `transaction_table` once and writing its exact output; it must
+    /// match character-for-character on every subsequent run.
+    #[test]
+    fn sale_table_matches_golden() {
+        let actual = transaction_table(&sale_response());
+        let expected = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/golden/transactions/sale_table.txt"
+        ));
+        assert_eq!(actual, expected);
+    }
+
+    /// Golden test: `inspect_table` output for a representative inspect response.
+    #[test]
+    fn inspect_table_matches_golden() {
+        let actual = inspect_table(&inspect_response());
+        let expected = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/golden/transactions/inspect_table.txt"
+        ));
+        assert_eq!(actual, expected);
+    }
+
+    /// Golden test: `transaction_list_table` output for 3 representative items.
+    #[test]
+    fn list_table_matches_golden() {
+        let items = list_items();
+        let actual = transaction_list_table(&items);
+        let expected = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/golden/transactions/list_table.txt"
+        ));
+        assert_eq!(actual, expected);
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

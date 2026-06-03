@@ -1,0 +1,5 @@
+ID                                    DATE        STATUS        TYPE            AMOUNT      CUSTOMER                
+--------------------------------------------------------------------------------------------------------------------
+txn-list-golden-001                   2026-05-01  Approved      Sale            100.00      Alice Smith             
+txn-list-golden-002                   2026-05-15  Declined      Sale            50.00       Bob Jones               
+txn-list-golden-003                   2026-06-01  Approved      Refund          25.00       Carol White             

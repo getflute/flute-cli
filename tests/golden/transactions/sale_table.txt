@@ -1,0 +1,5 @@
+transactionId:      txn-sale-golden-001
+status:             Approved
+amount:             125.50
+authCode:           GOLD42
+responseDescription: Approved

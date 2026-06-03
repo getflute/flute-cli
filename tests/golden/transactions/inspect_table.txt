@@ -14,4 +14,4 @@ Amount breakdown:
   tipAmount:         5.00
   totalAmount:       106.50
 
-Available operations: void, refund, tip-adjust
+Available operations: Void, Refund, TipAdjustment

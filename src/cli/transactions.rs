@@ -479,10 +479,22 @@ pub(crate) fn inspect_table(v: &serde_json::Value) -> String {
             if arr.is_empty() {
                 "none".to_string()
             } else {
-                arr.iter()
-                    .filter_map(|op| op.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                // The API returns each operation as an object like
+                // `{ "type": "Capture", "typeId": 3, ... }`. Older/string-form
+                // payloads (bare operation names) are also accepted.
+                let names: Vec<String> = arr
+                    .iter()
+                    .filter_map(|op| {
+                        op.as_str()
+                            .map(str::to_string)
+                            .or_else(|| op.get("type").and_then(|t| t.as_str()).map(str::to_string))
+                    })
+                    .collect();
+                if names.is_empty() {
+                    "none".to_string()
+                } else {
+                    names.join(", ")
+                }
             }
         }
         _ => "—".to_string(),
@@ -724,7 +736,12 @@ mod golden {
                 "tipAmount": 5.00,
                 "totalAmount": 106.50
             },
-            "availableOperations": ["void", "refund", "tip-adjust"]
+            // Real API shape: objects with a `type` field, not bare strings.
+            "availableOperations": [
+                { "type": "Void", "typeId": 4, "availableAmount": null, "suggestedTips": null },
+                { "type": "Refund", "typeId": 5, "availableAmount": 106.50, "suggestedTips": null },
+                { "type": "TipAdjustment", "typeId": 8, "availableAmount": null, "suggestedTips": null }
+            ]
         })
     }
 
@@ -1529,7 +1546,12 @@ mod tests {
                 "tipAmount": 5.00,
                 "totalAmount": 102.50
             },
-            "availableOperations": ["void", "refund", "tip-adjust"]
+            // Real API shape: array of objects with a `type` field.
+            "availableOperations": [
+                { "type": "Void", "typeId": 4 },
+                { "type": "Refund", "typeId": 5 },
+                { "type": "TipAdjustment", "typeId": 8 }
+            ]
         })
     }
 
@@ -1570,15 +1592,30 @@ mod tests {
         let v = sample_inspect_response();
         let table = inspect_table(&v);
 
-        assert!(table.contains("void"), "must contain void operation");
-        assert!(table.contains("refund"), "must contain refund operation");
+        // The API returns operation objects; we render their `type` names.
+        assert!(table.contains("Void"), "must contain Void operation");
+        assert!(table.contains("Refund"), "must contain Refund operation");
         assert!(
-            table.contains("tip-adjust"),
-            "must contain tip-adjust operation"
+            table.contains("TipAdjustment"),
+            "must contain TipAdjustment operation"
         );
         assert!(
-            table.contains("Available operations:"),
-            "must contain Available operations label"
+            table.contains("Available operations: Void, Refund, TipAdjustment"),
+            "operation types must be joined after the label"
+        );
+    }
+
+    #[test]
+    fn inspect_table_renders_string_form_operations() {
+        // Backward-compatible: bare-string operations still render.
+        let v = json!({
+            "transactionId": "txn-str-ops",
+            "availableOperations": ["void", "refund"]
+        });
+        let table = inspect_table(&v);
+        assert!(
+            table.contains("Available operations: void, refund"),
+            "string-form operations must still render"
         );
     }
 

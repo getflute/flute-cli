@@ -96,8 +96,9 @@ pub enum TransactionsCommand {
         #[arg(long)]
         payment_method_id: Option<String>,
 
-        /// Currency ID (server defaults when absent; do NOT pass 0).
-        #[arg(long)]
+        /// Currency ID. The API requires this; defaults to 1 (USD). Override for
+        /// other currencies.
+        #[arg(long, default_value = "1")]
         currency_id: Option<i32>,
 
         /// Card data source enum (default 1 = Internet/ISV API).

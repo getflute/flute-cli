@@ -28,8 +28,10 @@ parses `--amount` as `rust_decimal::Decimal` and emits it as an exact JSON numbe
 - `amount`: number (double) — from `--amount`
 - `tipAmount`: number nullable — from `--tip-amount`
 - `tipRate`, `percentageOffRate`, `surchargeRate`: number nullable
-- `currencyId`: integer (int32) — **NOT in required**; OMIT unless `--currency-id` is passed
-  (server defaults). Do not send 0.
+- `currencyId`: integer (int32) — although the OpenAPI schema does NOT list it as required,
+  the **live API rejects sale/auth without it** (`"'Currency Id' must not be empty."`). The
+  CLI therefore defaults `--currency-id` to `1` (USD, confirmed live) and always sends it.
+  Override for other currencies. Do not send 0.
 - `customerId`, `paymentMethodId`, `paymentProcessorId`: uuid nullable — `--customer-id`, `--payment-method-id`
 - `accountNumber`: string nullable — from `--card`
 - `securityCode`: string nullable — from `--cvv`

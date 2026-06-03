@@ -38,6 +38,37 @@ pub(crate) struct AspNetError {
     pub error_code: Option<String>,
     #[serde(rename = "exceptionType", alias = "ExceptionType")]
     pub exception_type: Option<String>,
+    // Field-level validation errors: a map of field name → messages. The
+    // empty-string key holds form-level (non-field) messages. A BTreeMap keeps
+    // the flattened output deterministic. These carry the *actionable* detail
+    // (e.g. "CurrencyId must not be empty") that the generic Title/Details miss.
+    #[serde(rename = "errors", alias = "Errors")]
+    pub errors: Option<std::collections::BTreeMap<String, Vec<String>>>,
+}
+
+impl AspNetError {
+    /// Flatten the field-error map into a readable, deterministic string:
+    /// `"field: msg; msg2"`. Empty-key (form-level) messages omit the prefix.
+    fn flatten_errors(&self) -> Option<String> {
+        let map = self.errors.as_ref()?;
+        let parts: Vec<String> = map
+            .iter()
+            .flat_map(|(field, msgs)| {
+                msgs.iter().map(move |m| {
+                    if field.is_empty() {
+                        m.clone()
+                    } else {
+                        format!("{field}: {m}")
+                    }
+                })
+            })
+            .collect();
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("; "))
+        }
+    }
 }
 
 pub(crate) fn from_aspnet(status: u16, body: &str) -> ApiError {
@@ -56,10 +87,14 @@ pub(crate) fn from_aspnet(status: u16, body: &str) -> ApiError {
                 (None, Some(d)) => d.to_string(),
                 (None, None) => body.to_string(),
             };
-            let message = match exception {
+            let mut message = match exception {
                 Some(et) => format!("{core} [{et}]"),
                 None => core,
             };
+            // Append the actionable field-level validation errors when present.
+            if let Some(fields) = e.flatten_errors() {
+                message = format!("{message}: {fields}");
+            }
             ApiError::Api {
                 status,
                 correlation_id: e.correlation_id,
@@ -118,6 +153,38 @@ mod tests {
                 assert_eq!(message, "oops");
             }
             _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn surfaces_field_level_validation_errors() {
+        // Real 400 body from the live sandbox: the actionable detail is in the
+        // `Errors` map, not Title/Details. The parser must surface it so the
+        // operator/agent doesn't need --debug to see what failed.
+        let body = r#"{"Errors":{"":["Card expiration year must be provided and be in [2000..3000] range"],"CurrencyId":["'Currency Id' must not be empty."]},"Details":"One or more validation errors occurred.","StatusCode":400,"ExceptionType":"ValidationException","CorrelationId":"e828","ErrorCode":"V0000","Title":"Validation failed"}"#;
+        match from_aspnet(400, body) {
+            ApiError::Api {
+                message,
+                correlation_id,
+                ..
+            } => {
+                assert_eq!(correlation_id.as_deref(), Some("e828"));
+                // Field errors appended after the core message; BTreeMap order
+                // puts the empty-key (form-level) message before "CurrencyId".
+                assert!(
+                    message.contains("Validation failed: One or more validation errors occurred. [ValidationException]"),
+                    "core message preserved: {message}"
+                );
+                assert!(
+                    message.contains("Card expiration year must be provided"),
+                    "form-level error surfaced: {message}"
+                );
+                assert!(
+                    message.contains("CurrencyId: 'Currency Id' must not be empty."),
+                    "field-prefixed error surfaced: {message}"
+                );
+            }
+            _ => panic!("expected Api"),
         }
     }
 

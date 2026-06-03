@@ -57,7 +57,7 @@ impl Profile {
         Self {
             name: "sandbox".into(),
             api_base_url: "https://api.uat.arise.risewithaurora.com".into(),
-            oauth_url: "https://oauth.api.uat.arise.risewithaurora.com/oauth2/token".into(),
+            oauth_url: "https://sandbox.oauth.api.uat.flute.com/oauth2/token".into(),
         }
     }
 
@@ -93,7 +93,7 @@ mod tests {
         assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com");
         assert_eq!(
             p.oauth_url,
-            "https://oauth.api.uat.arise.risewithaurora.com/oauth2/token"
+            "https://sandbox.oauth.api.uat.flute.com/oauth2/token"
         );
     }
 

@@ -42,7 +42,7 @@ AI agents (`--output json`, plus an `agents.md` contract).
 
 | Profile | API base URL | OAuth token URL |
 |---|---|---|
-| `sandbox` (default) | `https://api.uat.arise.risewithaurora.com` | `https://oauth.api.uat.arise.risewithaurora.com/oauth2/token` |
+| `sandbox` (default) | `https://api.uat.arise.risewithaurora.com` | `https://sandbox.oauth.api.uat.flute.com/oauth2/token` |
 | `production` (alias `prod`) | `https://api.arise.risewithaurora.com` | `https://oauth.arise.risewithaurora.com/oauth2/token` |
 
 > **Decision:** the `sandbox` profile points at the **UAT** URLs until the real sandbox

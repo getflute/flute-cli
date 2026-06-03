@@ -106,6 +106,62 @@ fn transactions_get_help_exits_zero() {
         .success();
 }
 
+// ── transactions capture --help ───────────────────────────────────────────────
+
+/// `flute transactions capture --help` exits 0 and documents `--transaction-id`.
+#[test]
+fn transactions_capture_help_exits_zero_and_mentions_key_flags() {
+    flute()
+        .args(["transactions", "capture", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--transaction-id"));
+}
+
+// ── transactions void --help ──────────────────────────────────────────────────
+
+/// `flute transactions void --help` exits 0 and documents `--transaction-id`.
+#[test]
+fn transactions_void_help_exits_zero_and_mentions_key_flags() {
+    flute()
+        .args(["transactions", "void", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--transaction-id"));
+}
+
+// ── transactions refund --help ────────────────────────────────────────────────
+
+/// `flute transactions refund --help` exits 0 and documents `--transaction-id`
+/// and `--card-data-source`.
+#[test]
+fn transactions_refund_help_exits_zero_and_mentions_key_flags() {
+    flute()
+        .args(["transactions", "refund", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("--transaction-id")
+                .and(predicate::str::contains("--card-data-source")),
+        );
+}
+
+// ── transactions tip-adjust --help ───────────────────────────────────────────
+
+/// `flute transactions tip-adjust --help` exits 0 and documents
+/// `--transaction-id` and `--tip-amount`.
+#[test]
+fn transactions_tip_adjust_help_exits_zero_and_mentions_key_flags() {
+    flute()
+        .args(["transactions", "tip-adjust", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("--transaction-id")
+                .and(predicate::str::contains("--tip-amount")),
+        );
+}
+
 // ── Required-argument enforcement (Clap, no network) ─────────────────────────
 
 /// `flute transactions sale` with no `--amount` must exit non-zero (Clap

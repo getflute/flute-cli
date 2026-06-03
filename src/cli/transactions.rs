@@ -489,23 +489,7 @@ pub(crate) fn inspect_table(v: &serde_json::Value) -> String {
     };
 
     format!(
-        "transactionId:       {txn_id}\n\
-         status:              {status}\n\
-         currency:            {currency}\n\
-         authCode:            {auth_code}\n\
-         responseCode:        {response_code}\n\
-         responseDescription: {response_desc}\n\
-         cardDataSource:      {card_data_source}\n\
-         customerPan:         {customer_pan}\n\
-         avsResponse:         {avs_response}\n\
-         \n\
-         Amount breakdown:\n\
-           baseAmount:        {base_amount}\n\
-           surchargeAmount:   {surcharge_amount}\n\
-           tipAmount:         {tip_amount}\n\
-           totalAmount:       {total_amount}\n\
-         \n\
-         Available operations: {ops}"
+        "transactionId:       {txn_id}\nstatus:              {status}\ncurrency:            {currency}\nauthCode:            {auth_code}\nresponseCode:        {response_code}\nresponseDescription: {response_desc}\ncardDataSource:      {card_data_source}\ncustomerPan:         {customer_pan}\navsResponse:         {avs_response}\n\nAmount breakdown:\n  baseAmount:        {base_amount}\n  surchargeAmount:   {surcharge_amount}\n  tipAmount:         {tip_amount}\n  totalAmount:       {total_amount}\n\nAvailable operations: {ops}"
     )
 }
 

@@ -9,9 +9,9 @@ customerPan:         411111XXXXXX1111
 avsResponse:         Y
 
 Amount breakdown:
-baseAmount:        100.00
-surchargeAmount:   1.50
-tipAmount:         5.00
-totalAmount:       106.50
+  baseAmount:        100.00
+  surchargeAmount:   1.50
+  tipAmount:         5.00
+  totalAmount:       106.50
 
 Available operations: void, refund, tip-adjust

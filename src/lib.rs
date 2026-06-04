@@ -148,7 +148,7 @@ async fn dispatch_customers(
     use cli::CustomersCommand;
     use cli::customers::{
         build_add_ach_body, build_add_card_body, build_customer_body, render_customer,
-        render_customer_list, render_payment_methods,
+        render_customer_list, render_payment_method, render_payment_methods,
     };
 
     match cc {
@@ -228,7 +228,7 @@ async fn dispatch_customers(
             let body = build_add_card_body(name.as_deref(), &card, &exp, cvv.as_deref())?;
             let (p, api) = build_client(profile)?;
             let result = api.add_card(&customer_id, body).await?;
-            render_payment_methods(&result, output_fmt, &p.name)
+            render_payment_method(&result, output_fmt, &p.name)
         }
         CustomersCommand::AddAch {
             customer_id,
@@ -249,7 +249,7 @@ async fn dispatch_customers(
             );
             let (p, api) = build_client(profile)?;
             let result = api.add_ach(&customer_id, body).await?;
-            render_payment_methods(&result, output_fmt, &p.name)
+            render_payment_method(&result, output_fmt, &p.name)
         }
         CustomersCommand::Methods { customer_id } => {
             let (p, api) = build_client(profile)?;

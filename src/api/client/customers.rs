@@ -7,6 +7,7 @@
 use crate::api::client::ApiClient;
 use crate::api::error::ApiError;
 use reqwest::Method;
+use url;
 
 impl ApiClient {
     /// POST `/pay-api/v1/customers` — create a new customer.
@@ -37,25 +38,21 @@ impl ApiClient {
         page_size: Option<u32>,
         search: Option<String>,
     ) -> Result<serde_json::Value, ApiError> {
-        let mut params: Vec<(&str, String)> = Vec::new();
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
         if let Some(p) = page {
-            params.push(("page", p.to_string()));
+            serializer.append_pair("page", &p.to_string());
         }
         if let Some(ps) = page_size {
-            params.push(("pageSize", ps.to_string()));
+            serializer.append_pair("pageSize", &ps.to_string());
         }
-        if let Some(s) = search {
-            params.push(("search", s));
+        if let Some(ref s) = search {
+            serializer.append_pair("search", s);
         }
+        let qs = serializer.finish();
 
-        let path = if params.is_empty() {
+        let path = if qs.is_empty() {
             "/pay-api/v1/customers".to_string()
         } else {
-            let qs: String = params
-                .iter()
-                .map(|(k, v)| format!("{k}={v}"))
-                .collect::<Vec<_>>()
-                .join("&");
             format!("/pay-api/v1/customers?{qs}")
         };
 
@@ -120,10 +117,11 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use crate::api::client::test_client;
+    use crate::cli::customers::build_customer_body;
     use serde_json::json;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
-        matchers::{header, method, path, query_param},
+        matchers::{body_partial_json, header, method, path, query_param},
     };
 
     fn sample_customer() -> serde_json::Value {
@@ -156,12 +154,20 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/pay-api/v1/customers"))
             .and(header("authorization", "Bearer test-token"))
+            .and(body_partial_json(json!({"email": "alice@example.com"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(sample_customer()))
             .mount(&server)
             .await;
 
         let api = test_client(server.uri());
-        let body = json!({"firstName": "Alice", "lastName": "Smith", "email": "alice@example.com"});
+        // Build via the canonical builder to prove builder→transport wiring.
+        let body = build_customer_body(
+            Some("Alice"),
+            Some("Smith"),
+            None,
+            Some("alice@example.com"),
+            None,
+        );
         let result = api.create_customer(body).await.unwrap();
         assert_eq!(result["id"], "cust-001");
         assert_eq!(result["firstName"], "Alice");
@@ -250,6 +256,44 @@ mod tests {
         assert_eq!(result["total"], 1);
     }
 
+    /// Confirm that a space in the search value is percent-encoded (+ or %20)
+    /// and that wiremock decodes it back to the raw string for matching.
+    #[tokio::test]
+    async fn list_customers_url_encodes_space_in_search() {
+        let server = MockServer::start().await;
+
+        // wiremock's query_param matcher decodes via url::Url::query_pairs(),
+        // so we match on the decoded string "alice smith" — the transport will
+        // have sent "alice+smith" or "alice%20smith" on the wire.
+        Mock::given(method("GET"))
+            .and(path("/pay-api/v1/customers"))
+            .and(query_param("search", "alice smith"))
+            .and(header("authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "items": [sample_customer()],
+                "total": 1
+            })))
+            .mount(&server)
+            .await;
+
+        let api = test_client(server.uri());
+        let result = api
+            .list_customers(None, None, Some("alice smith".into()))
+            .await
+            .unwrap();
+        assert_eq!(result["total"], 1);
+
+        // Also assert the raw query string on the wire contains an encoding of the space.
+        let received = server.received_requests().await.unwrap();
+        assert_eq!(received.len(), 1);
+        let raw_query = received[0].url.query().unwrap_or("");
+        // form_urlencoded encodes space as '+'; percent_encode uses %20
+        assert!(
+            raw_query.contains("alice+smith") || raw_query.contains("alice%20smith"),
+            "expected encoded space in query, got: {raw_query}"
+        );
+    }
+
     // ── update_customer ───────────────────────────────────────────────────────
 
     #[tokio::test]
@@ -259,6 +303,7 @@ mod tests {
         Mock::given(method("PUT"))
             .and(path("/pay-api/v1/customers/cust-001"))
             .and(header("authorization", "Bearer test-token"))
+            .and(body_partial_json(json!({"email": "updated@example.com"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(sample_customer()))
             .mount(&server)
             .await;
@@ -296,6 +341,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/pay-api/v1/customers/cust-001/payment-methods/cards"))
             .and(header("authorization", "Bearer test-token"))
+            .and(body_partial_json(json!({"pan": "4111111111111111"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(sample_pm()))
             .mount(&server)
             .await;
@@ -316,6 +362,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/pay-api/v1/customers/cust-001/payment-methods/ach"))
             .and(header("authorization", "Bearer test-token"))
+            .and(body_partial_json(json!({"accountType": 1})))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "id": "pm-ach-001",
                 "typeName": "ACH"

@@ -12,7 +12,7 @@
 use serde_json::{Map, Value};
 
 use crate::api::models::to_amount_number;
-use crate::cli::money::parse_amount;
+use crate::cli::money::{parse_amount, parse_rate};
 use crate::cli::output::{Envelope, OutputFormat, fit};
 
 // ── Args struct (mirrors PosCommand::Create fields) ───────────────────────────
@@ -78,9 +78,10 @@ pub fn build_pos_create_body(args: &PosCreateArgs) -> anyhow::Result<Value> {
         obj.insert("tipAmount".into(), to_amount_number(d));
     }
 
-    // Tip rate
+    // Tip rate — parse_rate allows up to 4 decimal places (rates are not money).
+    // NOTE: transactions l2_tax_rate could adopt parse_rate later (not changed here).
     if let Some(ref raw) = args.tip_rate {
-        let d = parse_amount(raw)?;
+        let d = parse_rate(raw)?;
         obj.insert("tipRate".into(), to_amount_number(d));
     }
 
@@ -302,8 +303,8 @@ where
     F: Fn(String) -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<Value>>,
 {
-    use std::time::{Duration, Instant};
-    use tokio::time::sleep;
+    use std::time::Duration;
+    use tokio::time::{Instant, sleep};
 
     let poll_interval = Duration::from_secs(2);
     let timeout = Duration::from_secs(timeout_secs);

@@ -4,6 +4,7 @@
 mod ach;
 mod customers;
 mod devices;
+mod pos;
 mod terminals;
 mod transactions;
 

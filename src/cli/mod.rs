@@ -564,9 +564,9 @@ pub enum CustomersCommand {
 
     /// Update a customer (PUT /pay-api/v1/customers/{id}).
     ///
-    /// NOTE: The API may treat PUT as a full replacement. Only the fields
-    /// you supply will be sent; any omitted fields may be reset server-side.
-    /// Confirm live behaviour before omitting existing values.
+    /// The API treats PUT as a full replacement, so the CLI does GET-merge-PUT:
+    /// it fetches the current record, overlays the flags you supply, and PUTs the
+    /// merged result. Omitted flags retain their existing server values.
     Update {
         /// Customer UUID to update (positional).
         id: String,

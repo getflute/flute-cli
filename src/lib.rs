@@ -140,6 +140,96 @@ fn parse_txn_money(
     })
 }
 
+async fn dispatch_ach(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    ac: cli::AchCommand,
+) -> anyhow::Result<()> {
+    use cli::AchCommand;
+    use cli::ach::{AchArgs, build_ach_body};
+    use cli::money::parse_amount;
+    use cli::transactions::render_transaction;
+
+    match ac {
+        AchCommand::Debit {
+            amount,
+            payment_processor_id,
+            routing,
+            account,
+            account_type,
+            account_holder_type,
+            requester_ip,
+            sec_code,
+            tax_id,
+            customer_id,
+            payment_method_id,
+            faster,
+        } => {
+            let amt = parse_amount(&amount)?;
+            let body = build_ach_body(&AchArgs {
+                amount: amt,
+                payment_processor_id,
+                requester_ip,
+                sec_code,
+                routing,
+                account,
+                account_type,
+                account_holder_type,
+                tax_id,
+                customer_id,
+                payment_method_id,
+                faster,
+            })?;
+            let (p, api) = build_client(profile)?;
+            let result = api.ach_debit(body).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+        AchCommand::Credit {
+            amount,
+            payment_processor_id,
+            routing,
+            account,
+            account_type,
+            account_holder_type,
+            requester_ip,
+            sec_code,
+            tax_id,
+            customer_id,
+            payment_method_id,
+            faster,
+        } => {
+            let amt = parse_amount(&amount)?;
+            let body = build_ach_body(&AchArgs {
+                amount: amt,
+                payment_processor_id,
+                requester_ip,
+                sec_code,
+                routing,
+                account,
+                account_type,
+                account_holder_type,
+                tax_id,
+                customer_id,
+                payment_method_id,
+                faster,
+            })?;
+            let (p, api) = build_client(profile)?;
+            let result = api.ach_credit(body).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+        AchCommand::Void { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.ach_void(&id).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+        AchCommand::Refund { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.ach_refund(&id).await?;
+            render_transaction(&result, output_fmt, &p.name)
+        }
+    }
+}
+
 async fn dispatch_transactions(
     profile: &str,
     output_fmt: cli::OutputFormat,
@@ -371,6 +461,7 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Transactions(tc) => {
                 dispatch_transactions(&profile, output_fmt, *tc).await
             }
+            cli::Command::Ach(ac) => dispatch_ach(&profile, output_fmt, *ac).await,
         };
 
         // On failure: always call process::exit with the semantic exit code.

@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 
+pub mod ach;
 pub mod auth;
 pub mod money;
 pub mod output;
@@ -47,6 +48,9 @@ pub enum Command {
     /// Transaction operations (sale, auth, …).
     #[command(subcommand)]
     Transactions(Box<TransactionsCommand>),
+    /// ACH payment operations (debit, credit, void, refund).
+    #[command(subcommand)]
+    Ach(Box<AchCommand>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -286,6 +290,124 @@ pub enum TransactionsCommand {
     /// `availableOperations` list from the API response — no client-side derivation.
     Inspect {
         /// Transaction UUID to inspect (positional).
+        id: String,
+    },
+}
+
+/// ACH subcommands — Phase 2 lifecycle ops.
+#[derive(Subcommand, Debug)]
+pub enum AchCommand {
+    /// ACH debit payment (POST /pay-api/v1/transactions/ach/payment).
+    Debit {
+        /// Transaction amount (required). Plain decimal, e.g. `500.00`.
+        #[arg(long, required = true)]
+        amount: String,
+
+        /// Payment processor UUID (required).
+        #[arg(long, required = true)]
+        payment_processor_id: String,
+
+        /// Routing number (ABA).
+        #[arg(long)]
+        routing: Option<String>,
+
+        /// Bank account number.
+        #[arg(long)]
+        account: Option<String>,
+
+        /// Account type: `checking` (default) or `savings`.
+        #[arg(long, value_enum)]
+        account_type: Option<ach::AccountTypeArg>,
+
+        /// Account holder type: `business` or `personal`. Omit if not applicable.
+        #[arg(long, value_enum)]
+        account_holder_type: Option<ach::AccountHolderTypeArg>,
+
+        /// End-customer IP address. Default `127.0.0.1`.
+        #[arg(long, default_value = "127.0.0.1")]
+        requester_ip: String,
+
+        /// ACH SEC code integer (default 1 = Web). Values: 1=Web, 2=PPD, 3=CCD, 4=Telephone.
+        #[arg(long, default_value_t = 1)]
+        sec_code: i32,
+
+        /// Tax ID (optional).
+        #[arg(long)]
+        tax_id: Option<String>,
+
+        /// Customer UUID for vault-linked ACH.
+        #[arg(long)]
+        customer_id: Option<String>,
+
+        /// Payment method UUID (stored ACH account).
+        #[arg(long)]
+        payment_method_id: Option<String>,
+
+        /// Enable faster processing (default false).
+        #[arg(long, default_value_t = false)]
+        faster: bool,
+    },
+
+    /// ACH credit payment (POST /pay-api/v1/transactions/ach/payment/credit).
+    Credit {
+        /// Transaction amount (required). Plain decimal, e.g. `500.00`.
+        #[arg(long, required = true)]
+        amount: String,
+
+        /// Payment processor UUID (required).
+        #[arg(long, required = true)]
+        payment_processor_id: String,
+
+        /// Routing number (ABA).
+        #[arg(long)]
+        routing: Option<String>,
+
+        /// Bank account number.
+        #[arg(long)]
+        account: Option<String>,
+
+        /// Account type: `checking` (default) or `savings`.
+        #[arg(long, value_enum)]
+        account_type: Option<ach::AccountTypeArg>,
+
+        /// Account holder type: `business` or `personal`. Omit if not applicable.
+        #[arg(long, value_enum)]
+        account_holder_type: Option<ach::AccountHolderTypeArg>,
+
+        /// End-customer IP address. Default `127.0.0.1`.
+        #[arg(long, default_value = "127.0.0.1")]
+        requester_ip: String,
+
+        /// ACH SEC code integer (default 1 = Web). Values: 1=Web, 2=PPD, 3=CCD, 4=Telephone.
+        #[arg(long, default_value_t = 1)]
+        sec_code: i32,
+
+        /// Tax ID (optional).
+        #[arg(long)]
+        tax_id: Option<String>,
+
+        /// Customer UUID for vault-linked ACH.
+        #[arg(long)]
+        customer_id: Option<String>,
+
+        /// Payment method UUID (stored ACH account).
+        #[arg(long)]
+        payment_method_id: Option<String>,
+
+        /// Enable faster processing (default false).
+        #[arg(long, default_value_t = false)]
+        faster: bool,
+    },
+
+    /// Void an ACH transaction by ID (POST /pay-api/v1/transactions/ach/{id}/void).
+    Void {
+        /// ACH transaction UUID to void (positional).
+        id: String,
+    },
+
+    /// Refund an ACH transaction by ID (POST /pay-api/v1/transactions/ach/{id}/refund).
+    Refund {
+        /// ACH transaction UUID to refund (positional).
         id: String,
     },
 }

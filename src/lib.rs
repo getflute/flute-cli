@@ -140,6 +140,146 @@ fn parse_txn_money(
     })
 }
 
+async fn dispatch_customers(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    cc: cli::CustomersCommand,
+) -> anyhow::Result<()> {
+    use cli::CustomersCommand;
+    use cli::customers::{
+        build_add_ach_body, build_add_card_body, build_customer_body, render_customer,
+        render_customer_list, render_payment_methods,
+    };
+
+    match cc {
+        CustomersCommand::Create {
+            first_name,
+            last_name,
+            email,
+            company,
+            mobile,
+        } => {
+            let body = build_customer_body(
+                first_name.as_deref(),
+                last_name.as_deref(),
+                company.as_deref(),
+                email.as_deref(),
+                mobile.as_deref(),
+            );
+            let (p, api) = build_client(profile)?;
+            let result = api.create_customer(body).await?;
+            render_customer(&result, output_fmt, &p.name)
+        }
+        CustomersCommand::Get { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.get_customer(&id).await?;
+            render_customer(&result, output_fmt, &p.name)
+        }
+        CustomersCommand::List {
+            limit,
+            page,
+            search,
+        } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.list_customers(page, Some(limit), search).await?;
+            render_customer_list(&result, output_fmt, &p.name)
+        }
+        CustomersCommand::Update {
+            id,
+            first_name,
+            last_name,
+            email,
+            company,
+            mobile,
+        } => {
+            let body = build_customer_body(
+                first_name.as_deref(),
+                last_name.as_deref(),
+                company.as_deref(),
+                email.as_deref(),
+                mobile.as_deref(),
+            );
+            let (p, api) = build_client(profile)?;
+            let result = api.update_customer(&id, body).await?;
+            render_customer(&result, output_fmt, &p.name)
+        }
+        CustomersCommand::Delete { id, yes } => {
+            if !yes {
+                anyhow::bail!(
+                    "deletion requires --yes to confirm (e.g. `customers delete {id} --yes`)"
+                );
+            }
+            let (_p, api) = build_client(profile)?;
+            api.delete_customer(&id).await?;
+            match output_fmt {
+                cli::OutputFormat::Json => {} // empty stdout, exit 0
+                cli::OutputFormat::Table => println!("Deleted customer {id}."),
+                cli::OutputFormat::Quiet => println!("{id}"),
+            }
+            Ok(())
+        }
+        CustomersCommand::AddCard {
+            customer_id,
+            card,
+            exp,
+            cvv,
+            name,
+        } => {
+            let body = build_add_card_body(name.as_deref(), &card, &exp, cvv.as_deref())?;
+            let (p, api) = build_client(profile)?;
+            let result = api.add_card(&customer_id, body).await?;
+            render_payment_methods(&result, output_fmt, &p.name)
+        }
+        CustomersCommand::AddAch {
+            customer_id,
+            routing,
+            account,
+            account_type,
+            account_holder_type,
+            name,
+            tax_id,
+        } => {
+            let body = build_add_ach_body(
+                name.as_deref(),
+                &account,
+                &routing,
+                account_type,
+                account_holder_type,
+                tax_id.as_deref(),
+            );
+            let (p, api) = build_client(profile)?;
+            let result = api.add_ach(&customer_id, body).await?;
+            render_payment_methods(&result, output_fmt, &p.name)
+        }
+        CustomersCommand::Methods { customer_id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.list_payment_methods(&customer_id).await?;
+            render_payment_methods(&result, output_fmt, &p.name)
+        }
+        CustomersCommand::RemoveMethod {
+            customer_id,
+            method_id,
+            yes,
+        } => {
+            if !yes {
+                anyhow::bail!(
+                    "removal requires --yes to confirm (e.g. `customers remove-method {customer_id} {method_id} --yes`)"
+                );
+            }
+            let (_p, api) = build_client(profile)?;
+            api.remove_payment_method(&customer_id, &method_id).await?;
+            match output_fmt {
+                cli::OutputFormat::Json => {} // empty stdout, exit 0
+                cli::OutputFormat::Table => {
+                    println!("Removed payment method {method_id}.")
+                }
+                cli::OutputFormat::Quiet => println!("{method_id}"),
+            }
+            Ok(())
+        }
+    }
+}
+
 async fn dispatch_ach(
     profile: &str,
     output_fmt: cli::OutputFormat,
@@ -462,6 +602,7 @@ pub fn run() -> anyhow::Result<()> {
                 dispatch_transactions(&profile, output_fmt, *tc).await
             }
             cli::Command::Ach(ac) => dispatch_ach(&profile, output_fmt, *ac).await,
+            cli::Command::Customers(cc) => dispatch_customers(&profile, output_fmt, *cc).await,
         };
 
         // On failure: always call process::exit with the semantic exit code.

@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 
 pub mod ach;
 pub mod auth;
+pub mod customers;
 pub mod money;
 pub mod output;
 pub mod transactions;
@@ -51,6 +52,9 @@ pub enum Command {
     /// ACH payment operations (debit, credit, void, refund).
     #[command(subcommand)]
     Ach(Box<AchCommand>),
+    /// Customer and payment-method vault operations.
+    #[command(subcommand)]
+    Customers(Box<CustomersCommand>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -409,6 +413,170 @@ pub enum AchCommand {
     Refund {
         /// ACH transaction UUID to refund (positional).
         id: String,
+    },
+}
+
+/// Customers / Vault subcommands — Phase 2 Task 2.2.
+#[derive(Subcommand, Debug)]
+pub enum CustomersCommand {
+    /// Create a new customer (POST /pay-api/v1/customers).
+    Create {
+        /// Customer first name.
+        #[arg(long)]
+        first_name: Option<String>,
+
+        /// Customer last name.
+        #[arg(long)]
+        last_name: Option<String>,
+
+        /// Customer email address.
+        #[arg(long)]
+        email: Option<String>,
+
+        /// Customer company name.
+        #[arg(long)]
+        company: Option<String>,
+
+        /// Customer mobile phone number.
+        #[arg(long)]
+        mobile: Option<String>,
+    },
+
+    /// Fetch a single customer by ID (GET /pay-api/v1/customers/{id}).
+    Get {
+        /// Customer UUID to retrieve (positional).
+        id: String,
+    },
+
+    /// List customers (GET /pay-api/v1/customers).
+    List {
+        /// Maximum results per page (default 25). Maps to `pageSize` on the API.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+
+        /// Page number to fetch (1-based). Maps to `page` on the API.
+        #[arg(long)]
+        page: Option<u32>,
+
+        /// Server-side text search across name/email.
+        #[arg(long)]
+        search: Option<String>,
+    },
+
+    /// Update a customer (PUT /pay-api/v1/customers/{id}).
+    ///
+    /// NOTE: The API may treat PUT as a full replacement. Only the fields
+    /// you supply will be sent; any omitted fields may be reset server-side.
+    /// Confirm live behaviour before omitting existing values.
+    Update {
+        /// Customer UUID to update (positional).
+        id: String,
+
+        /// New first name.
+        #[arg(long)]
+        first_name: Option<String>,
+
+        /// New last name.
+        #[arg(long)]
+        last_name: Option<String>,
+
+        /// New email address.
+        #[arg(long)]
+        email: Option<String>,
+
+        /// New company name.
+        #[arg(long)]
+        company: Option<String>,
+
+        /// New mobile phone number.
+        #[arg(long)]
+        mobile: Option<String>,
+    },
+
+    /// Delete a customer (DELETE /pay-api/v1/customers/{id}).
+    ///
+    /// Requires `--yes` to prevent accidental deletions.
+    Delete {
+        /// Customer UUID to delete (positional).
+        id: String,
+
+        /// Confirm the deletion (required).
+        #[arg(long)]
+        yes: bool,
+    },
+
+    /// Vault a card for a customer (POST /pay-api/v1/customers/{id}/payment-methods/cards).
+    AddCard {
+        /// Customer UUID (positional).
+        customer_id: String,
+
+        /// Card PAN (primary account number), e.g. `4111111111111111`.
+        #[arg(long, required = true)]
+        card: String,
+
+        /// Card expiry in MM/YY or MM/YYYY format, e.g. `12/26`.
+        #[arg(long, required = true)]
+        exp: String,
+
+        /// Card CVV/security code.
+        #[arg(long)]
+        cvv: Option<String>,
+
+        /// Friendly label for this payment method.
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// Vault an ACH account for a customer (POST /pay-api/v1/customers/{id}/payment-methods/ach).
+    AddAch {
+        /// Customer UUID (positional).
+        customer_id: String,
+
+        /// ABA routing number.
+        #[arg(long, required = true)]
+        routing: String,
+
+        /// Bank account number.
+        #[arg(long, required = true)]
+        account: String,
+
+        /// Account type: `checking` (default) or `savings`.
+        #[arg(long, value_enum, default_value = "checking")]
+        account_type: ach::AccountTypeArg,
+
+        /// Account holder type: `business` or `personal`. Omit if not applicable.
+        #[arg(long, value_enum)]
+        account_holder_type: Option<ach::AccountHolderTypeArg>,
+
+        /// Friendly label for this payment method.
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Tax ID (optional).
+        #[arg(long)]
+        tax_id: Option<String>,
+    },
+
+    /// List payment methods for a customer (GET /pay-api/v1/customers/{id}/payment-methods).
+    Methods {
+        /// Customer UUID (positional).
+        customer_id: String,
+    },
+
+    /// Remove a payment method from a customer's vault.
+    ///
+    /// DELETE /pay-api/v1/customers/{id}/payment-methods/{mid}.
+    /// Requires `--yes` to prevent accidental removal.
+    RemoveMethod {
+        /// Customer UUID (positional).
+        customer_id: String,
+
+        /// Payment method UUID (positional).
+        method_id: String,
+
+        /// Confirm the removal (required).
+        #[arg(long)]
+        yes: bool,
     },
 }
 

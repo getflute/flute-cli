@@ -7,7 +7,7 @@
 use crate::api::client::ApiClient;
 use crate::api::error::ApiError;
 use reqwest::Method;
-use url;
+use url::form_urlencoded;
 
 impl ApiClient {
     /// POST `/pay-api/v1/customers` — create a new customer.
@@ -38,7 +38,7 @@ impl ApiClient {
         page_size: Option<u32>,
         search: Option<String>,
     ) -> Result<serde_json::Value, ApiError> {
-        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        let mut serializer = form_urlencoded::Serializer::new(String::new());
         if let Some(p) = page {
             serializer.append_pair("page", &p.to_string());
         }

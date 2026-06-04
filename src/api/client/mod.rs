@@ -108,7 +108,6 @@ impl ApiClient {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn send_no_body(&self, method: Method, path: &str) -> Result<(), ApiError> {
         let url = format!("{}{}", self.base_url, path);
         debug!(method = %method, url = %url, "HTTP request");

@@ -36,6 +36,22 @@ pub(crate) fn missing_credentials_error(profile: &str) -> anyhow::Error {
     .into()
 }
 
+/// Treat a 404 API error on a delete/remove operation as idempotent success.
+///
+/// Per spec: "treat 404 on re-delete as idempotent success" — a second delete of
+/// an already-deleted resource should exit 0, not fail.  All other errors pass
+/// through unchanged.
+///
+/// Extracted as a pure helper so it is independently unit-testable without
+/// needing a live `ApiClient`.
+pub(crate) fn treat_404_as_ok(result: Result<(), api::ApiError>) -> anyhow::Result<()> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(api::ApiError::Api { status: 404, .. }) => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Build an authenticated `ApiClient` from stored/env credentials for `profile`.
 ///
 /// Returns `(Profile, ApiClient)` so callers can embed `profile.name` in
@@ -210,7 +226,7 @@ async fn dispatch_customers(
                 );
             }
             let (_p, api) = build_client(profile)?;
-            api.delete_customer(&id).await?;
+            treat_404_as_ok(api.delete_customer(&id).await)?;
             match output_fmt {
                 cli::OutputFormat::Json => {} // empty stdout, exit 0
                 cli::OutputFormat::Table => println!("Deleted customer {id}."),
@@ -267,7 +283,7 @@ async fn dispatch_customers(
                 );
             }
             let (_p, api) = build_client(profile)?;
-            api.remove_payment_method(&customer_id, &method_id).await?;
+            treat_404_as_ok(api.remove_payment_method(&customer_id, &method_id).await)?;
             match output_fmt {
                 cli::OutputFormat::Json => {} // empty stdout, exit 0
                 cli::OutputFormat::Table => {
@@ -286,7 +302,7 @@ async fn dispatch_ach(
     ac: cli::AchCommand,
 ) -> anyhow::Result<()> {
     use cli::AchCommand;
-    use cli::ach::{AchArgs, build_ach_body};
+    use cli::ach::{AchArgs, AchTxnKind, execute_ach_txn};
     use cli::money::parse_amount;
     use cli::transactions::render_transaction;
 
@@ -306,23 +322,26 @@ async fn dispatch_ach(
             faster,
         } => {
             let amt = parse_amount(&amount)?;
-            let body = build_ach_body(&AchArgs {
-                amount: amt,
-                payment_processor_id,
-                requester_ip,
-                sec_code,
-                routing,
-                account,
-                account_type,
-                account_holder_type,
-                tax_id,
-                customer_id,
-                payment_method_id,
-                faster,
-            })?;
-            let (p, api) = build_client(profile)?;
-            let result = api.ach_debit(body).await?;
-            render_transaction(&result, output_fmt, &p.name)
+            execute_ach_txn(
+                profile,
+                output_fmt,
+                AchArgs {
+                    amount: amt,
+                    payment_processor_id,
+                    requester_ip,
+                    sec_code,
+                    routing,
+                    account,
+                    account_type,
+                    account_holder_type,
+                    tax_id,
+                    customer_id,
+                    payment_method_id,
+                    faster,
+                },
+                AchTxnKind::Debit,
+            )
+            .await
         }
         AchCommand::Credit {
             amount,
@@ -339,23 +358,26 @@ async fn dispatch_ach(
             faster,
         } => {
             let amt = parse_amount(&amount)?;
-            let body = build_ach_body(&AchArgs {
-                amount: amt,
-                payment_processor_id,
-                requester_ip,
-                sec_code,
-                routing,
-                account,
-                account_type,
-                account_holder_type,
-                tax_id,
-                customer_id,
-                payment_method_id,
-                faster,
-            })?;
-            let (p, api) = build_client(profile)?;
-            let result = api.ach_credit(body).await?;
-            render_transaction(&result, output_fmt, &p.name)
+            execute_ach_txn(
+                profile,
+                output_fmt,
+                AchArgs {
+                    amount: amt,
+                    payment_processor_id,
+                    requester_ip,
+                    sec_code,
+                    routing,
+                    account,
+                    account_type,
+                    account_holder_type,
+                    tax_id,
+                    customer_id,
+                    payment_method_id,
+                    faster,
+                },
+                AchTxnKind::Credit,
+            )
+            .await
         }
         AchCommand::Void { id } => {
             let (p, api) = build_client(profile)?;
@@ -731,6 +753,50 @@ mod tests {
         // No flag, garbage config value → default Table.
         assert_eq!(resolve_output(None, ""), OutputFormat::Table);
         assert_eq!(resolve_output(None, "unknown"), OutputFormat::Table);
+    }
+
+    // ── treat_404_as_ok ──────────────────────────────────────────────────────
+
+    #[test]
+    fn treat_404_as_ok_maps_404_to_success() {
+        use crate::api::ApiError;
+        let err = ApiError::Api {
+            status: 404,
+            correlation_id: None,
+            message: "not found".into(),
+        };
+        let result = treat_404_as_ok(Err(err));
+        assert!(result.is_ok(), "404 must be mapped to Ok");
+    }
+
+    #[test]
+    fn treat_404_as_ok_passes_through_other_errors() {
+        use crate::api::ApiError;
+        let err = ApiError::Api {
+            status: 500,
+            correlation_id: None,
+            message: "server error".into(),
+        };
+        let result = treat_404_as_ok(Err(err));
+        assert!(result.is_err(), "non-404 errors must propagate");
+    }
+
+    #[test]
+    fn treat_404_as_ok_keeps_ok_as_ok() {
+        let result = treat_404_as_ok(Ok(()));
+        assert!(result.is_ok(), "Ok(()) must remain Ok");
+    }
+
+    #[test]
+    fn treat_404_as_ok_does_not_swallow_400() {
+        use crate::api::ApiError;
+        let err = ApiError::Api {
+            status: 400,
+            correlation_id: None,
+            message: "bad request".into(),
+        };
+        let result = treat_404_as_ok(Err(err));
+        assert!(result.is_err(), "400 must not be swallowed");
     }
 
     // ── Change 3: missing_credentials_error classification ──────────────────

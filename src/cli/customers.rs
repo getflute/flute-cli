@@ -253,6 +253,41 @@ pub(crate) fn customer_list_table(items: &[Value]) -> String {
     rows.join("\n")
 }
 
+/// Build the table string for a single payment method (pure helper, golden-testable).
+pub(crate) fn payment_method_table(v: &Value) -> String {
+    let get_str = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("—");
+    let pan_or_acct = v
+        .get("panMask")
+        .and_then(|x| x.as_str())
+        .or_else(|| v.get("accountNumber").and_then(|x| x.as_str()))
+        .unwrap_or("—");
+    let exp = match (
+        v.get("expirationMonth").and_then(|x| x.as_u64()),
+        v.get("expirationYear").and_then(|x| x.as_u64()),
+    ) {
+        (Some(m), Some(y)) => format!("{m:02}/{y}"),
+        _ => "—".to_string(),
+    };
+    let is_default = v
+        .get("isDefault")
+        .and_then(|x| x.as_bool())
+        .map(|b| if b { "yes" } else { "no" })
+        .unwrap_or("—");
+    format!(
+        "id:               {}\ntypeName:         {}\npan/account:      {}\nexp:              {}\nisDefault:        {}",
+        get_str("id"),
+        get_str("typeName"),
+        pan_or_acct,
+        exp,
+        is_default,
+    )
+}
+
+/// Extract just the payment-method `id` for quiet output (pure helper).
+pub(crate) fn payment_method_quiet(v: &Value) -> Option<&str> {
+    v.get("id").and_then(|x| x.as_str())
+}
+
 /// Render a single payment-method object returned by `add-card` or `add-ach`.
 ///
 /// - `json`  → `Envelope { object: "payment_method", data: v, … }`
@@ -265,35 +300,10 @@ pub fn render_payment_method(v: &Value, fmt: OutputFormat, env: &str) -> anyhow:
             println!("{}", serde_json::to_string_pretty(&envelope)?);
         }
         OutputFormat::Table => {
-            let get_str = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("—");
-            let pan_or_acct = v
-                .get("panMask")
-                .and_then(|x| x.as_str())
-                .or_else(|| v.get("accountNumber").and_then(|x| x.as_str()))
-                .unwrap_or("—");
-            let exp = match (
-                v.get("expirationMonth").and_then(|x| x.as_u64()),
-                v.get("expirationYear").and_then(|x| x.as_u64()),
-            ) {
-                (Some(m), Some(y)) => format!("{m:02}/{y}"),
-                _ => "—".to_string(),
-            };
-            let is_default = v
-                .get("isDefault")
-                .and_then(|x| x.as_bool())
-                .map(|b| if b { "yes" } else { "no" })
-                .unwrap_or("—");
-            println!(
-                "id:               {}\ntypeName:         {}\npan/account:      {}\nexp:              {}\nisDefault:        {}",
-                get_str("id"),
-                get_str("typeName"),
-                pan_or_acct,
-                exp,
-                is_default,
-            );
+            println!("{}", payment_method_table(v));
         }
         OutputFormat::Quiet => {
-            if let Some(id) = v.get("id").and_then(|x| x.as_str()) {
+            if let Some(id) = payment_method_quiet(v) {
                 println!("{id}");
             }
         }
@@ -629,10 +639,6 @@ mod tests {
 
     #[test]
     fn render_payment_method_table_shows_id_typename_pan() {
-        // Capture stdout via a string buffer isn't trivial in unit tests, so we
-        // test the pure sub-components: the table lines are assembled from the
-        // same logic.  We call the helper indirectly by inspecting the fields
-        // the function would format.
         let v = json!({
             "id": "pm-card-42",
             "typeName": "Visa",
@@ -641,29 +647,29 @@ mod tests {
             "expirationYear": 2028,
             "isDefault": false
         });
-        // Verify quiet output value
-        let id = v.get("id").and_then(|x| x.as_str()).unwrap_or("—");
-        assert_eq!(id, "pm-card-42");
+        let table = payment_method_table(&v);
+        assert!(table.contains("pm-card-42"), "must contain id");
+        assert!(table.contains("Visa"), "must contain typeName");
+        assert!(table.contains("411111****1111"), "must contain panMask");
+        assert!(table.contains("09/2028"), "must contain formatted expiry");
+        assert!(table.contains("no"), "must contain isDefault=no");
+    }
 
-        // Verify table field extraction (mirrors render_payment_method logic)
-        let pan_or_acct = v
-            .get("panMask")
-            .and_then(|x| x.as_str())
-            .or_else(|| v.get("accountNumber").and_then(|x| x.as_str()))
-            .unwrap_or("—");
-        assert_eq!(pan_or_acct, "411111****1111");
-
-        let type_name = v.get("typeName").and_then(|x| x.as_str()).unwrap_or("—");
-        assert_eq!(type_name, "Visa");
-
-        let exp = match (
-            v.get("expirationMonth").and_then(|x| x.as_u64()),
-            v.get("expirationYear").and_then(|x| x.as_u64()),
-        ) {
-            (Some(m), Some(y)) => format!("{m:02}/{y}"),
-            _ => "—".to_string(),
-        };
-        assert_eq!(exp, "09/2028");
+    #[test]
+    fn render_payment_method_table_ach_shows_account_number() {
+        let v = json!({
+            "id": "pm-ach-77",
+            "typeName": "ACH",
+            "accountNumber": "987654321",
+            "isDefault": true
+        });
+        let table = payment_method_table(&v);
+        assert!(table.contains("pm-ach-77"), "must contain id");
+        assert!(table.contains("ACH"), "must contain typeName");
+        assert!(table.contains("987654321"), "must contain accountNumber");
+        assert!(table.contains("yes"), "must contain isDefault=yes");
+        // No expiry for ACH → dash
+        assert!(table.contains('—'), "missing exp must render as —");
     }
 
     #[test]
@@ -674,10 +680,13 @@ mod tests {
             "accountNumber": "987654321"
         });
         // Quiet path: only the id string
-        let id = v.get("id").and_then(|x| x.as_str()).unwrap_or("");
-        assert_eq!(id, "pm-quiet-99");
-        // typeName and accountNumber are present but quiet ignores them
-        assert!(v.get("typeName").is_some());
+        assert_eq!(payment_method_quiet(&v), Some("pm-quiet-99"));
+    }
+
+    #[test]
+    fn render_payment_method_quiet_returns_none_when_no_id() {
+        let v = json!({ "typeName": "Visa" });
+        assert_eq!(payment_method_quiet(&v), None);
     }
 
     // ── extract_customer_items ────────────────────────────────────────────────

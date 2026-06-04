@@ -152,6 +152,31 @@ pub fn build_ach_body(args: &AchArgs) -> Result<Value> {
     Ok(Value::Object(obj))
 }
 
+// ── ACH transaction dispatcher ───────────────────────────────────────────────
+
+/// Selects which ACH transaction endpoint to call.
+pub(crate) enum AchTxnKind {
+    Debit,
+    Credit,
+}
+
+/// Shared handler for ACH debit and credit, which share the same request body
+/// shape and differ only in which API endpoint they call.
+pub(crate) async fn execute_ach_txn(
+    profile: &str,
+    output: crate::cli::output::OutputFormat,
+    args: AchArgs,
+    kind: AchTxnKind,
+) -> anyhow::Result<()> {
+    let body = build_ach_body(&args)?;
+    let (p, api) = crate::build_client(profile)?;
+    let result = match kind {
+        AchTxnKind::Debit => api.ach_debit(body).await?,
+        AchTxnKind::Credit => api.ach_credit(body).await?,
+    };
+    crate::cli::transactions::render_transaction(&result, output, &p.name)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

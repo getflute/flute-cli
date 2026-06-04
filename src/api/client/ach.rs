@@ -90,6 +90,17 @@ mod tests {
             customer_id: None,
             payment_method_id: None,
             faster: false,
+            billing_line1: None,
+            billing_line2: None,
+            billing_city: None,
+            billing_state: None,
+            billing_postal_code: None,
+            billing_country_id: None,
+            contact_first_name: None,
+            contact_last_name: None,
+            contact_email: None,
+            contact_phone: None,
+            contact_company: None,
         })
         .unwrap();
 

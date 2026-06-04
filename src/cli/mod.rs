@@ -302,6 +302,10 @@ pub enum TransactionsCommand {
 #[derive(Subcommand, Debug)]
 pub enum AchCommand {
     /// ACH debit payment (POST /pay-api/v1/transactions/ach/payment).
+    ///
+    /// Live API requires `--account-holder-type`, `--billing-line1` (and at least
+    /// one other billing field), and `--contact-first-name`/`--contact-last-name`
+    /// beyond the OpenAPI "required" list — include them to avoid 422 rejections.
     Debit {
         /// Transaction amount (required). Plain decimal, e.g. `500.00`.
         #[arg(long, required = true)]
@@ -323,7 +327,7 @@ pub enum AchCommand {
         #[arg(long, value_enum)]
         account_type: Option<ach::AccountTypeArg>,
 
-        /// Account holder type: `business` or `personal`. Omit if not applicable.
+        /// Account holder type: `business` or `personal`. Live-required for debit/credit.
         #[arg(long, value_enum)]
         account_holder_type: Option<ach::AccountHolderTypeArg>,
 
@@ -350,9 +354,58 @@ pub enum AchCommand {
         /// Enable faster processing (default false).
         #[arg(long, default_value_t = false)]
         faster: bool,
+
+        // ── Billing address (live-required) ───────────────────────────────────
+        /// Billing address line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+
+        /// Billing address line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+
+        /// Billing city.
+        #[arg(long)]
+        billing_city: Option<String>,
+
+        /// Billing state name (e.g. `IL`).
+        #[arg(long)]
+        billing_state: Option<String>,
+
+        /// Billing postal/ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+
+        /// Billing country ID (integer, e.g. `840` for USA).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
+
+        // ── Contact info (live-required) ──────────────────────────────────────
+        /// Contact first name.
+        #[arg(long)]
+        contact_first_name: Option<String>,
+
+        /// Contact last name.
+        #[arg(long)]
+        contact_last_name: Option<String>,
+
+        /// Contact email address.
+        #[arg(long)]
+        contact_email: Option<String>,
+
+        /// Contact mobile/phone number.
+        #[arg(long)]
+        contact_phone: Option<String>,
+
+        /// Contact company name.
+        #[arg(long)]
+        contact_company: Option<String>,
     },
 
     /// ACH credit payment (POST /pay-api/v1/transactions/ach/payment/credit).
+    ///
+    /// Live API requires `--account-holder-type`, `--billing-*`, and `--contact-*`
+    /// fields beyond the OpenAPI "required" list — include them to avoid 422 rejections.
     Credit {
         /// Transaction amount (required). Plain decimal, e.g. `500.00`.
         #[arg(long, required = true)]
@@ -374,7 +427,7 @@ pub enum AchCommand {
         #[arg(long, value_enum)]
         account_type: Option<ach::AccountTypeArg>,
 
-        /// Account holder type: `business` or `personal`. Omit if not applicable.
+        /// Account holder type: `business` or `personal`. Live-required for debit/credit.
         #[arg(long, value_enum)]
         account_holder_type: Option<ach::AccountHolderTypeArg>,
 
@@ -401,6 +454,52 @@ pub enum AchCommand {
         /// Enable faster processing (default false).
         #[arg(long, default_value_t = false)]
         faster: bool,
+
+        // ── Billing address (live-required) ───────────────────────────────────
+        /// Billing address line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+
+        /// Billing address line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+
+        /// Billing city.
+        #[arg(long)]
+        billing_city: Option<String>,
+
+        /// Billing state name (e.g. `IL`).
+        #[arg(long)]
+        billing_state: Option<String>,
+
+        /// Billing postal/ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+
+        /// Billing country ID (integer, e.g. `840` for USA).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
+
+        // ── Contact info (live-required) ──────────────────────────────────────
+        /// Contact first name.
+        #[arg(long)]
+        contact_first_name: Option<String>,
+
+        /// Contact last name.
+        #[arg(long)]
+        contact_last_name: Option<String>,
+
+        /// Contact email address.
+        #[arg(long)]
+        contact_email: Option<String>,
+
+        /// Contact mobile/phone number.
+        #[arg(long)]
+        contact_phone: Option<String>,
+
+        /// Contact company name.
+        #[arg(long)]
+        contact_company: Option<String>,
     },
 
     /// Void an ACH transaction by ID (POST /pay-api/v1/transactions/ach/{id}/void).

@@ -75,7 +75,7 @@ pub struct AchArgs {
     pub account: Option<String>,
     /// `accountType` — maps to 1=Checking, 2=Savings; optional (omit sends no field).
     pub account_type: Option<AccountTypeArg>,
-    /// `accountHolderType` — maps to 1=Business, 2=Personal; optional (omit when not given).
+    /// `accountHolderType` — maps to 1=Business, 2=Personal; live-required for debit/credit.
     pub account_holder_type: Option<AccountHolderTypeArg>,
     /// `taxId` — optional.
     pub tax_id: Option<String>,
@@ -85,6 +85,32 @@ pub struct AchArgs {
     pub payment_method_id: Option<String>,
     /// `isFasterProcessing` — default `false`; always included (non-nullable API field).
     pub faster: bool,
+
+    // ── billingAddress (AddressIsvDto) ────────────────────────────────────────
+    /// `billingAddress.line1` — optional.
+    pub billing_line1: Option<String>,
+    /// `billingAddress.line2` — optional.
+    pub billing_line2: Option<String>,
+    /// `billingAddress.city` — optional.
+    pub billing_city: Option<String>,
+    /// `billingAddress.stateName` — optional.
+    pub billing_state: Option<String>,
+    /// `billingAddress.postalCode` — optional.
+    pub billing_postal_code: Option<String>,
+    /// `billingAddress.countryId` — optional.
+    pub billing_country_id: Option<i32>,
+
+    // ── contactInfo (ContactInfoIsvDto) ───────────────────────────────────────
+    /// `contactInfo.firstName` — optional.
+    pub contact_first_name: Option<String>,
+    /// `contactInfo.lastName` — optional.
+    pub contact_last_name: Option<String>,
+    /// `contactInfo.email` — optional.
+    pub contact_email: Option<String>,
+    /// `contactInfo.mobileNumber` — optional.
+    pub contact_phone: Option<String>,
+    /// `contactInfo.companyName` — optional.
+    pub contact_company: Option<String>,
 }
 
 /// Build the JSON request body for an ACH `debit` or `credit` request.
@@ -101,11 +127,13 @@ pub struct AchArgs {
 /// | `routing`             | `routingNumber`        | optional, omitted when `None`           |
 /// | `account`             | `accountNumber`        | optional, omitted when `None`           |
 /// | `account_type`        | `accountType`          | int 1/2; optional, omitted when `None`  |
-/// | `account_holder_type` | `accountHolderType`    | int 1/2; optional, omitted when `None`  |
+/// | `account_holder_type` | `accountHolderType`    | int 1/2; live-required; omitted when `None` |
 /// | `tax_id`              | `taxId`                | optional, omitted when `None`           |
 /// | `customer_id`         | `customerId`           | optional, omitted when `None`           |
 /// | `payment_method_id`   | `paymentMethodId`      | optional, omitted when `None`           |
 /// | `faster`              | `isFasterProcessing`   | always present (non-nullable), default false |
+/// | `billing_*`           | `billingAddress{…}`    | AddressIsvDto; included only when ≥1 field present |
+/// | `contact_*`           | `contactInfo{…}`       | ContactInfoIsvDto; included only when ≥1 field present |
 pub fn build_ach_body(args: &AchArgs) -> Result<Value> {
     let mut obj = Map::new();
 
@@ -148,6 +176,55 @@ pub fn build_ach_body(args: &AchArgs) -> Result<Value> {
 
     // isFasterProcessing — always present (non-nullable field); default false
     obj.insert("isFasterProcessing".into(), json!(args.faster));
+
+    // billingAddress — include only when at least one field is present
+    {
+        let mut addr = Map::new();
+        if let Some(v) = &args.billing_line1 {
+            addr.insert("line1".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &args.billing_line2 {
+            addr.insert("line2".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &args.billing_city {
+            addr.insert("city".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &args.billing_state {
+            addr.insert("stateName".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &args.billing_postal_code {
+            addr.insert("postalCode".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = args.billing_country_id {
+            addr.insert("countryId".into(), json!(v));
+        }
+        if !addr.is_empty() {
+            obj.insert("billingAddress".into(), Value::Object(addr));
+        }
+    }
+
+    // contactInfo — include only when at least one field is present
+    {
+        let mut contact = Map::new();
+        if let Some(v) = &args.contact_first_name {
+            contact.insert("firstName".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &args.contact_last_name {
+            contact.insert("lastName".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &args.contact_email {
+            contact.insert("email".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &args.contact_phone {
+            contact.insert("mobileNumber".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &args.contact_company {
+            contact.insert("companyName".into(), Value::String(v.clone()));
+        }
+        if !contact.is_empty() {
+            obj.insert("contactInfo".into(), Value::Object(contact));
+        }
+    }
 
     Ok(Value::Object(obj))
 }
@@ -198,6 +275,17 @@ mod tests {
             customer_id: None,
             payment_method_id: None,
             faster: false,
+            billing_line1: None,
+            billing_line2: None,
+            billing_city: None,
+            billing_state: None,
+            billing_postal_code: None,
+            billing_country_id: None,
+            contact_first_name: None,
+            contact_last_name: None,
+            contact_email: None,
+            contact_phone: None,
+            contact_company: None,
         }
     }
 
@@ -270,6 +358,17 @@ mod tests {
             customer_id: None,
             payment_method_id: None,
             faster: false,
+            billing_line1: None,
+            billing_line2: None,
+            billing_city: None,
+            billing_state: None,
+            billing_postal_code: None,
+            billing_country_id: None,
+            contact_first_name: None,
+            contact_last_name: None,
+            contact_email: None,
+            contact_phone: None,
+            contact_company: None,
         };
 
         let body = build_ach_body(&args).unwrap();
@@ -303,6 +402,17 @@ mod tests {
             customer_id: None,
             payment_method_id: None,
             faster: false,
+            billing_line1: None,
+            billing_line2: None,
+            billing_city: None,
+            billing_state: None,
+            billing_postal_code: None,
+            billing_country_id: None,
+            contact_first_name: None,
+            contact_last_name: None,
+            contact_email: None,
+            contact_phone: None,
+            contact_company: None,
         };
 
         let body = build_ach_body(&args).unwrap();
@@ -339,6 +449,17 @@ mod tests {
             customer_id: None,
             payment_method_id: None,
             faster: true,
+            billing_line1: None,
+            billing_line2: None,
+            billing_city: None,
+            billing_state: None,
+            billing_postal_code: None,
+            billing_country_id: None,
+            contact_first_name: None,
+            contact_last_name: None,
+            contact_email: None,
+            contact_phone: None,
+            contact_company: None,
         };
 
         let body = build_ach_body(&args).unwrap();
@@ -362,12 +483,121 @@ mod tests {
             customer_id: Some("cust-uuid-001".into()),
             payment_method_id: Some("pm-uuid-001".into()),
             faster: false,
+            billing_line1: None,
+            billing_line2: None,
+            billing_city: None,
+            billing_state: None,
+            billing_postal_code: None,
+            billing_country_id: None,
+            contact_first_name: None,
+            contact_last_name: None,
+            contact_email: None,
+            contact_phone: None,
+            contact_company: None,
         };
 
         let body = build_ach_body(&args).unwrap();
         assert_eq!(body["taxId"], "123-45-6789");
         assert_eq!(body["customerId"], "cust-uuid-001");
         assert_eq!(body["paymentMethodId"], "pm-uuid-001");
+    }
+
+    // ── billing + contact golden tests ───────────────────────────────────────
+
+    /// Golden test: billing address fields map to the correct camelCase wire keys.
+    #[test]
+    fn build_ach_debit_body_with_billing_and_contact() {
+        let mut args = base_args();
+        args.account_holder_type = Some(AccountHolderTypeArg::Business);
+        args.billing_line1 = Some("123 Main St".into());
+        args.billing_line2 = Some("Suite 4".into());
+        args.billing_city = Some("Springfield".into());
+        args.billing_state = Some("IL".into());
+        args.billing_postal_code = Some("62701".into());
+        args.billing_country_id = Some(840);
+        args.contact_first_name = Some("Jane".into());
+        args.contact_last_name = Some("Doe".into());
+        args.contact_email = Some("jane@example.com".into());
+        args.contact_phone = Some("5550001234".into());
+        args.contact_company = Some("Acme Corp".into());
+
+        let body = build_ach_body(&args).unwrap();
+
+        // accountHolderType must be present (live-required)
+        assert_eq!(body["accountHolderType"], 1, "Business maps to int 1");
+
+        // billingAddress nested object — exact camelCase wire keys
+        let billing = &body["billingAddress"];
+        assert_eq!(billing["line1"], "123 Main St");
+        assert_eq!(billing["line2"], "Suite 4");
+        assert_eq!(billing["city"], "Springfield");
+        assert_eq!(billing["stateName"], "IL");
+        assert_eq!(billing["postalCode"], "62701");
+        assert_eq!(billing["countryId"], 840);
+
+        // contactInfo nested object — exact camelCase wire keys
+        let contact = &body["contactInfo"];
+        assert_eq!(contact["firstName"], "Jane");
+        assert_eq!(contact["lastName"], "Doe");
+        assert_eq!(contact["email"], "jane@example.com");
+        assert_eq!(contact["mobileNumber"], "5550001234");
+        assert_eq!(contact["companyName"], "Acme Corp");
+
+        // Existing required fields still intact
+        assert_eq!(body["routingNumber"], "021000021");
+        assert_eq!(body["accountNumber"], "123456789");
+        assert_eq!(body["accountType"], 1);
+        assert_eq!(body["paymentProcessorId"], "pp-1");
+        assert_eq!(body["isFasterProcessing"], false);
+    }
+
+    /// billingAddress is omitted entirely when no billing fields are provided.
+    #[test]
+    fn build_ach_body_omits_billing_when_all_billing_fields_absent() {
+        let args = base_args();
+        let body = build_ach_body(&args).unwrap();
+        assert!(
+            body.get("billingAddress").is_none(),
+            "billingAddress must be absent when no billing fields given"
+        );
+    }
+
+    /// contactInfo is omitted entirely when no contact fields are provided.
+    #[test]
+    fn build_ach_body_omits_contact_when_all_contact_fields_absent() {
+        let args = base_args();
+        let body = build_ach_body(&args).unwrap();
+        assert!(
+            body.get("contactInfo").is_none(),
+            "contactInfo must be absent when no contact fields given"
+        );
+    }
+
+    /// billingAddress with only line1 — partial fields work; line2/city/etc absent from sub-object.
+    #[test]
+    fn build_ach_body_billing_partial_fields() {
+        let mut args = base_args();
+        args.billing_line1 = Some("456 Oak Ave".into());
+        let body = build_ach_body(&args).unwrap();
+        let billing = &body["billingAddress"];
+        assert_eq!(billing["line1"], "456 Oak Ave");
+        assert!(billing.get("line2").is_none());
+        assert!(billing.get("city").is_none());
+        assert!(billing.get("countryId").is_none());
+    }
+
+    /// contactInfo with only email — partial fields work.
+    #[test]
+    fn build_ach_body_contact_partial_fields() {
+        let mut args = base_args();
+        args.contact_email = Some("contact@example.com".into());
+        let body = build_ach_body(&args).unwrap();
+        let contact = &body["contactInfo"];
+        assert_eq!(contact["email"], "contact@example.com");
+        assert!(contact.get("firstName").is_none());
+        assert!(contact.get("lastName").is_none());
+        assert!(contact.get("mobileNumber").is_none());
+        assert!(contact.get("companyName").is_none());
     }
 
     #[test]
@@ -397,6 +627,17 @@ mod tests {
             customer_id: None,
             payment_method_id: None,
             faster: false,
+            billing_line1: None,
+            billing_line2: None,
+            billing_city: None,
+            billing_state: None,
+            billing_postal_code: None,
+            billing_country_id: None,
+            contact_first_name: None,
+            contact_last_name: None,
+            contact_email: None,
+            contact_phone: None,
+            contact_company: None,
         };
 
         let body = build_ach_body(&args).unwrap();

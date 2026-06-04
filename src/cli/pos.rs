@@ -145,7 +145,7 @@ pub(crate) fn pos_transaction_table(v: &Value) -> String {
         v.get(k)
             .and_then(|x| {
                 x.as_f64()
-                    .map(|f| format!("{f}"))
+                    .map(|f| format!("{f:.2}"))
                     .or_else(|| x.as_str().map(|s| s.to_string()))
             })
             .unwrap_or_else(|| "—".to_string())
@@ -190,7 +190,7 @@ pub(crate) fn pos_transaction_list_table(items: &[Value]) -> String {
             .unwrap_or("—");
         let amount = item
             .get("amount")
-            .and_then(|v| v.as_f64().map(|f| format!("{f}")))
+            .and_then(|v| v.as_f64().map(|f| format!("{f:.2}")))
             .unwrap_or_else(|| "—".to_string());
         let done = item
             .get("isCompleted")
@@ -504,6 +504,11 @@ mod tests {
             "must contain posTransactionStatus"
         );
         assert!(table.contains("false"), "must contain isCompleted=false");
+        // Amount must be rendered to 2 decimal places
+        assert!(
+            table.contains("100.00"),
+            "amount must be formatted to 2 decimal places, got: {table}"
+        );
     }
 
     #[test]
@@ -532,6 +537,11 @@ mod tests {
         assert!(table.contains("pos-txn-001"), "must contain row id");
         assert!(table.contains("term-001"), "must contain terminal id");
         assert!(table.contains("TerminalConnecting"), "must contain status");
+        // Amount must be rendered to 2 decimal places
+        assert!(
+            table.contains("100.00"),
+            "list amount must be formatted to 2 decimal places, got: {table}"
+        );
     }
 
     #[test]
@@ -601,27 +611,46 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn poll_loop_times_out_when_never_completed() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
         use tokio::time::advance;
 
-        // getter always returns isCompleted:false
-        let getter = |_id: String| async move {
-            Ok(json!({
-                "id": "pos-txn-timeout",
-                "isCompleted": false
-            }))
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let cc = call_count.clone();
+
+        // getter always returns isCompleted:false, counting each call
+        let getter = move |_id: String| {
+            let cc = cc.clone();
+            async move {
+                cc.fetch_add(1, Ordering::SeqCst);
+                Ok(json!({
+                    "id": "pos-txn-timeout",
+                    "isCompleted": false
+                }))
+            }
         };
 
         let poll_handle = tokio::spawn(run_wait_poll("pos-txn-timeout", 4, getter));
 
-        // Advance well past the 4-second timeout (poll every 2s, so 3 intervals)
-        for _ in 0..4 {
-            advance(std::time::Duration::from_secs(2)).await;
-        }
+        // With a 2s poll interval and 4s timeout, polls fire at t=2s and t=4s.
+        // Advance by 3s twice so the task can interleave between advances:
+        //   advance(3s) → first sleep(2s) fires → getter called (count=1), elapsed=2s < 4s
+        //   advance(3s) → second sleep(2s) fires → getter called (count=2), elapsed=4s >= 4s → TimedOut
+        advance(std::time::Duration::from_secs(3)).await;
+        advance(std::time::Duration::from_secs(3)).await;
 
         let outcome = poll_handle.await.unwrap().unwrap();
         assert!(
             matches!(outcome, PollOutcome::TimedOut(_)),
             "expected PollOutcome::TimedOut, got {outcome:?}"
+        );
+        // With a 2s interval and 4s timeout: polls fire at t=2s and t=4s → exactly 2 calls.
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            2,
+            "getter must be called exactly 2 times (t=2s and t=4s)"
         );
     }
 }

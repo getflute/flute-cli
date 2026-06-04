@@ -23,13 +23,14 @@ fn flute() -> Command {
 
 // ── devices list --help ───────────────────────────────────────────────────────
 
-/// `flute devices list --help` exits 0.
+/// `flute devices list --help` exits 0 and contains recognisable help content.
 #[test]
 fn devices_list_help_exits_zero() {
     flute()
         .args(["devices", "list", "--help"])
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains("list").or(predicate::str::contains("devices")));
 }
 
 // ── devices get --help ────────────────────────────────────────────────────────

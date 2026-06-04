@@ -240,7 +240,9 @@ async fn dispatch_pos(
                     std::process::exit(1);
                 }
                 PollOutcome::Interrupted(v) => {
-                    // Ctrl-C: print last-known state to stderr and exit gracefully.
+                    // Ctrl-C: print last-known state to stderr and exit with 130
+                    // (conventional SIGINT exit code) so scripts can distinguish
+                    // an interrupted poll from a completed one.
                     if v.is_null() {
                         eprintln!("Interrupted before first poll. Transaction id: {pos_id}");
                     } else {
@@ -250,6 +252,7 @@ async fn dispatch_pos(
                             .unwrap_or("unknown");
                         eprintln!("Interrupted. Last known status: {status} (id: {pos_id})");
                     }
+                    std::process::exit(130);
                 }
             }
             Ok(())

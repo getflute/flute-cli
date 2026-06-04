@@ -108,6 +108,43 @@ impl ApiClient {
         }
     }
 
+    /// Like `send_no_body` but accepts a JSON body — used when the server returns
+    /// an empty 200 body (e.g. `PUT /pay-api/v1/customers/{id}`).  The response
+    /// body is intentionally discarded; callers that need the updated resource
+    /// should issue a subsequent GET.
+    pub(crate) async fn send_body_discard(
+        &self,
+        method: Method,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<(), ApiError> {
+        let url = format!("{}{}", self.base_url, path);
+        let body_for_log = body.to_string();
+        debug!(method = %method, url = %url, body = %body_for_log, "HTTP request");
+
+        let (mut status, mut text) = self.issue(&method, &url, Some(&body)).await?;
+
+        if status == StatusCode::UNAUTHORIZED {
+            info!("HTTP 401 — invalidating cached token and retrying once");
+            self.tokens.invalidate().await;
+            let (s2, t2) = self.issue(&method, &url, Some(&body)).await?;
+            status = s2;
+            text = t2;
+        }
+
+        if status.is_success() {
+            debug!(method = %method, url = %url, status = status.as_u16(), "HTTP response (body discarded)");
+            Ok(())
+        } else {
+            debug!(
+                method = %method, url = %url, status = status.as_u16(),
+                body = %text,
+                "HTTP response"
+            );
+            Err(from_aspnet(status.as_u16(), &text))
+        }
+    }
+
     pub(crate) async fn send_no_body(&self, method: Method, path: &str) -> Result<(), ApiError> {
         let url = format!("{}{}", self.base_url, path);
         debug!(method = %method, url = %url, "HTTP request");
@@ -248,5 +285,42 @@ mod tests {
         // fetch() must have been called once for the initial request and once
         // after invalidate() — proving the 401-retry path works end-to-end.
         assert_eq!(counter.load(Ordering::SeqCst), 2);
+    }
+
+    /// Regression: send_body_discard returns Ok(()) when the server responds
+    /// with HTTP 200 and an empty body (the live PUT /customers/{id} behavior
+    /// that previously caused "EOF while parsing a value" via send::<Value>).
+    #[tokio::test]
+    async fn send_body_discard_tolerates_empty_200_body() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{body_partial_json, header, method, path},
+        };
+        let server = MockServer::start().await;
+
+        // Respond with 200 and NO body — mirrors the live PUT customers endpoint.
+        Mock::given(method("PUT"))
+            .and(path("/pay-api/v1/customers/cust-001"))
+            .and(header("authorization", "Bearer test-token"))
+            .and(body_partial_json(
+                serde_json::json!({"email": "new@example.com"}),
+            ))
+            .respond_with(ResponseTemplate::new(200)) // empty body
+            .mount(&server)
+            .await;
+
+        let api = super::test_client(server.uri());
+        let result = api
+            .send_body_discard(
+                reqwest::Method::PUT,
+                "/pay-api/v1/customers/cust-001",
+                serde_json::json!({"email": "new@example.com"}),
+            )
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "send_body_discard must succeed on empty 200 body, got: {result:?}"
+        );
     }
 }

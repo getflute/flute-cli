@@ -208,15 +208,20 @@ async fn dispatch_customers(
             company,
             mobile,
         } => {
-            // PUT is a full replacement: GET current values first, merge in the
-            // user-supplied flags, then PUT the merged body so omitted flags
-            // retain their existing values instead of being wiped.
+            // GET-merge-PUT-re-GET pattern:
+            // 1. GET current values so omitted flags retain their existing data.
+            // 2. Merge user-supplied flags onto the current record.
+            // 3. PUT the merged body.  The live API responds 200 with an empty
+            //    body, so update_customer returns () — no JSON to decode.
+            // 4. GET the customer again (fresh) so we render the server's
+            //    canonical post-update state rather than our local merge.
             let (p, api) = build_client(profile)?;
             let current = api.get_customer(&id).await?;
             let body =
                 merge_customer_update(&current, first_name, last_name, company, email, mobile);
-            let result = api.update_customer(&id, body).await?;
-            render_customer(&result, output_fmt, &p.name)
+            api.update_customer(&id, body).await?;
+            let fresh = api.get_customer(&id).await?;
+            render_customer(&fresh, output_fmt, &p.name)
         }
         CustomersCommand::Delete { id, yes } => {
             if !yes {
@@ -323,6 +328,7 @@ async fn dispatch_ach(
             billing_line2,
             billing_city,
             billing_state,
+            billing_state_id,
             billing_postal_code,
             billing_country_id,
             contact_first_name,
@@ -352,6 +358,7 @@ async fn dispatch_ach(
                     billing_line2,
                     billing_city,
                     billing_state,
+                    billing_state_id,
                     billing_postal_code,
                     billing_country_id,
                     contact_first_name,
@@ -381,6 +388,7 @@ async fn dispatch_ach(
             billing_line2,
             billing_city,
             billing_state,
+            billing_state_id,
             billing_postal_code,
             billing_country_id,
             contact_first_name,
@@ -410,6 +418,7 @@ async fn dispatch_ach(
                     billing_line2,
                     billing_city,
                     billing_state,
+                    billing_state_id,
                     billing_postal_code,
                     billing_country_id,
                     contact_first_name,

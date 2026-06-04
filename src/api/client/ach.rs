@@ -94,6 +94,7 @@ mod tests {
             billing_line2: None,
             billing_city: None,
             billing_state: None,
+            billing_state_id: None,
             billing_postal_code: None,
             billing_country_id: None,
             contact_first_name: None,

@@ -61,16 +61,13 @@ impl ApiClient {
 
     /// PUT `/pay-api/v1/customers/{id}` — update a customer.
     ///
-    /// NOTE: The API may treat PUT as a full replacement; callers should pass
-    /// only the fields the user explicitly supplied (and document the risk of
-    /// unintended field reset until GET-merge-PUT is implemented).
-    pub async fn update_customer(
-        &self,
-        id: &str,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value, ApiError> {
+    /// The live API responds with HTTP 200 and an **empty** body, so this method
+    /// uses `send_body_discard` to avoid a JSON-decode error ("EOF while parsing
+    /// a value").  Callers that need to display the updated customer must issue a
+    /// separate `get_customer` call after this returns `Ok(())`.
+    pub async fn update_customer(&self, id: &str, body: serde_json::Value) -> Result<(), ApiError> {
         let path = format!("/pay-api/v1/customers/{id}");
-        self.send(Method::PUT, &path, Some(body)).await
+        self.send_body_discard(Method::PUT, &path, body).await
     }
 
     /// DELETE `/pay-api/v1/customers/{id}` — delete a customer (bodyless).
@@ -296,22 +293,27 @@ mod tests {
 
     // ── update_customer ───────────────────────────────────────────────────────
 
+    /// Reproduces live behavior: server returns 200 with an empty body.
+    /// Previously this caused "EOF while parsing a value"; now it must succeed.
     #[tokio::test]
-    async fn update_customer_puts_to_correct_path_with_body() {
+    async fn update_customer_tolerates_empty_200_body() {
         let server = MockServer::start().await;
 
         Mock::given(method("PUT"))
             .and(path("/pay-api/v1/customers/cust-001"))
             .and(header("authorization", "Bearer test-token"))
             .and(body_partial_json(json!({"email": "updated@example.com"})))
-            .respond_with(ResponseTemplate::new(200).set_body_json(sample_customer()))
+            .respond_with(ResponseTemplate::new(200)) // empty body — mirrors live API
             .mount(&server)
             .await;
 
         let api = test_client(server.uri());
         let body = json!({"email": "updated@example.com"});
-        let result = api.update_customer("cust-001", body).await.unwrap();
-        assert_eq!(result["id"], "cust-001");
+        let result = api.update_customer("cust-001", body).await;
+        assert!(
+            result.is_ok(),
+            "update_customer must succeed on empty 200 body, got: {result:?}"
+        );
     }
 
     // ── delete_customer ───────────────────────────────────────────────────────

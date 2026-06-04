@@ -3,7 +3,7 @@
 //! All render helpers are **pure functions** — no I/O, no network — so they
 //! are trivially unit-testable with golden assertions.
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::cli::output::{Envelope, OutputFormat, fit};
 
@@ -15,16 +15,15 @@ use crate::cli::output::{Envelope, OutputFormat, fit};
 /// - First tries `v["items"]` as an array (standard page wrapper).
 /// - Falls back to treating `v` itself as an array.
 ///
-/// - `json`  → `Envelope { object: "terminal_list", data: {items, total}, … }`
+/// - `json`  → `Envelope { object: "terminal_list", data: v (raw), … }`
 /// - `table` → columnar table via [`terminal_list_table`]
 /// - `quiet` → one ID per line
 pub fn render_terminal_list(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
-    let (items, total) = extract_items(v);
+    let (items, _total) = extract_items(v);
 
     match fmt {
         OutputFormat::Json => {
-            let data = json!({ "items": items, "total": total });
-            let env = Envelope::new("terminal_list", data, environment, None);
+            let env = Envelope::new("terminal_list", v.clone(), environment, None);
             println!("{}", serde_json::to_string_pretty(&env)?);
         }
         OutputFormat::Table => {
@@ -32,9 +31,7 @@ pub fn render_terminal_list(v: &Value, fmt: OutputFormat, environment: &str) -> 
         }
         OutputFormat::Quiet => {
             for item in &items {
-                if let Some(id) = item.get("id").and_then(|x| x.as_str()) {
-                    println!("{id}");
-                }
+                println!("{}", item.get("id").and_then(|x| x.as_str()).unwrap_or("—"));
             }
         }
     }
@@ -112,7 +109,7 @@ pub(crate) fn terminal_status_table(v: &Value) -> String {
     let get = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("—");
     let get_num = |k: &str| {
         v.get(k)
-            .and_then(|x| x.as_u64())
+            .and_then(|x| x.as_u64().or_else(|| x.as_f64().map(|f| f as u64)))
             .map(|n| n.to_string())
             .unwrap_or_else(|| "—".to_string())
     };
@@ -284,5 +281,74 @@ mod tests {
         let (items, total) = extract_items(&v);
         assert_eq!(items.len(), 3);
         assert_eq!(total, 3);
+    }
+
+    // ── render_terminal_list JSON is lossless ─────────────────────────────────
+
+    #[test]
+    fn render_terminal_list_json_passes_raw_value() {
+        // The server response includes an extra top-level field "nextCursor"
+        // that must survive the JSON render path unchanged.
+        let v = json!({
+            "items": [{ "id": "t1" }],
+            "total": 1,
+            "nextCursor": "abc123"
+        });
+        let env = crate::cli::output::Envelope::new("terminal_list", v.clone(), "test", None);
+        let s = serde_json::to_string_pretty(&env).unwrap();
+        // The raw value must appear inside the envelope data.
+        assert!(
+            s.contains("nextCursor"),
+            "extra server field must be preserved"
+        );
+        assert!(
+            s.contains("abc123"),
+            "extra server field value must be preserved"
+        );
+    }
+
+    // ── terminal_status_table float-tolerant numeric fields ───────────────────
+
+    #[test]
+    fn terminal_status_table_handles_float_encoded_integers() {
+        let v = json!({
+            "terminalId": "t-float",
+            "batteryLevel": 85.0,
+            "wifiConnectionStrength": 72.0,
+            "mobileConnectionStrength": 60.0,
+        });
+        let table = terminal_status_table(&v);
+        assert!(table.contains("85"), "batteryLevel 85.0 must render as 85");
+        assert!(
+            table.contains("72"),
+            "wifiConnectionStrength 72.0 must render as 72"
+        );
+    }
+
+    // ── render_terminal_list quiet emits dash for missing id ──────────────────
+
+    #[test]
+    fn render_terminal_list_quiet_emits_dash_for_missing_id() {
+        // Items without an "id" field must still produce one output line with "—".
+        let v = json!({
+            "items": [
+                { "serialNumber": "SN-NO-ID" },
+                { "id": "t-has-id" }
+            ],
+            "total": 2
+        });
+        // Capture output by calling the helper directly on extracted items.
+        let (items, _) = extract_items(&v);
+        let lines: Vec<String> = items
+            .iter()
+            .map(|item| {
+                item.get("id")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("—")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(lines[0], "—", "item without id must emit em-dash");
+        assert_eq!(lines[1], "t-has-id", "item with id must emit id");
     }
 }

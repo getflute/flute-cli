@@ -5,8 +5,10 @@ use clap::{Parser, Subcommand};
 pub mod ach;
 pub mod auth;
 pub mod customers;
+pub mod devices;
 pub mod money;
 pub mod output;
+pub mod terminals;
 pub mod transactions;
 pub mod util;
 
@@ -55,6 +57,12 @@ pub enum Command {
     /// Customer and payment-method vault operations.
     #[command(subcommand)]
     Customers(Box<CustomersCommand>),
+    /// Terminal operations (list, status).
+    #[command(subcommand)]
+    Terminals(Box<TerminalsCommand>),
+    /// Device operations (list, get, register, ttp-jwt, ttp-activate).
+    #[command(subcommand)]
+    Devices(Box<DevicesCommand>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -686,6 +694,65 @@ pub enum CustomersCommand {
         /// Confirm the removal (required).
         #[arg(long)]
         yes: bool,
+    },
+}
+
+/// Terminals subcommands — Phase 3 Task 3.1.
+#[derive(Subcommand, Debug)]
+pub enum TerminalsCommand {
+    /// List terminals (GET /pos-api/v1/terminals).
+    List {
+        /// Maximum results per page (default 25). Maps to `pageSize` on the API.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+
+        /// Page number to fetch (1-based). Maps to `page` on the API.
+        #[arg(long)]
+        page: Option<u32>,
+    },
+
+    /// Retrieve terminal status by ID (GET /pos-api/v1/terminals/{id}/status).
+    Status {
+        /// Terminal UUID (positional).
+        id: String,
+    },
+}
+
+/// Devices subcommands — Phase 3 Task 3.1.
+#[derive(Subcommand, Debug)]
+pub enum DevicesCommand {
+    /// List all devices (GET /pay-api/v1/devices).
+    List,
+
+    /// Fetch a single device by ID (GET /pay-api/v1/devices/{id}).
+    Get {
+        /// Device ID (positional).
+        id: String,
+    },
+
+    /// Register (create or update) a device (POST /pay-api/v1/devices).
+    Register {
+        /// Device ID (positional). Maps to `deviceId` in the request body.
+        id: String,
+
+        /// Friendly name for this device. Maps to `deviceName` (optional).
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// Generate a Tap-to-Pay JWT for a device (POST /pay-api/v1/devices/tap-to-pay/jwt).
+    TtpJwt {
+        /// Device ID to generate JWT for (required). Maps to `deviceId` in body.
+        #[arg(long, required = true)]
+        device_id: String,
+    },
+
+    /// Activate Tap-to-Pay for a device (POST /pay-api/v1/devices/{id}/tap-to-pay/activate).
+    ///
+    /// This is a bodyless POST — no request body is sent.
+    TtpActivate {
+        /// Device ID (positional).
+        id: String,
     },
 }
 

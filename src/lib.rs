@@ -156,6 +156,70 @@ fn parse_txn_money(
     })
 }
 
+async fn dispatch_terminals(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    tc: cli::TerminalsCommand,
+) -> anyhow::Result<()> {
+    use cli::TerminalsCommand;
+    use cli::terminals::{render_terminal_list, render_terminal_status};
+
+    match tc {
+        TerminalsCommand::List { limit, page } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.list_terminals(page, Some(limit)).await?;
+            render_terminal_list(&result, output_fmt, &p.name)
+        }
+        TerminalsCommand::Status { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.terminal_status(&id).await?;
+            render_terminal_status(&result, output_fmt, &p.name)
+        }
+    }
+}
+
+async fn dispatch_devices(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    dc: cli::DevicesCommand,
+) -> anyhow::Result<()> {
+    use cli::DevicesCommand;
+    use cli::devices::{
+        build_register_device_body, build_ttp_jwt_body, render_device, render_device_list,
+        render_ttp_jwt,
+    };
+
+    match dc {
+        DevicesCommand::List => {
+            let (p, api) = build_client(profile)?;
+            let result = api.list_devices().await?;
+            render_device_list(&result, output_fmt, &p.name)
+        }
+        DevicesCommand::Get { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.get_device(&id).await?;
+            render_device(&result, output_fmt, &p.name)
+        }
+        DevicesCommand::Register { id, name } => {
+            let body = build_register_device_body(&id, name.as_deref());
+            let (p, api) = build_client(profile)?;
+            let result = api.register_device(body).await?;
+            render_device(&result, output_fmt, &p.name)
+        }
+        DevicesCommand::TtpJwt { device_id } => {
+            let body = build_ttp_jwt_body(&device_id);
+            let (p, api) = build_client(profile)?;
+            let result = api.ttp_jwt(body).await?;
+            render_ttp_jwt(&result, output_fmt, &p.name)
+        }
+        DevicesCommand::TtpActivate { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.ttp_activate(&id).await?;
+            render_device(&result, output_fmt, &p.name)
+        }
+    }
+}
+
 async fn dispatch_customers(
     profile: &str,
     output_fmt: cli::OutputFormat,
@@ -677,6 +741,8 @@ pub fn run() -> anyhow::Result<()> {
             }
             cli::Command::Ach(ac) => dispatch_ach(&profile, output_fmt, *ac).await,
             cli::Command::Customers(cc) => dispatch_customers(&profile, output_fmt, *cc).await,
+            cli::Command::Terminals(tc) => dispatch_terminals(&profile, output_fmt, *tc).await,
+            cli::Command::Devices(dc) => dispatch_devices(&profile, output_fmt, *dc).await,
         };
 
         // On failure: always call process::exit with the semantic exit code.

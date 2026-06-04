@@ -2,6 +2,7 @@
 //! live in sibling modules (transactions.rs, ach.rs, …).
 
 mod ach;
+mod customers;
 mod transactions;
 
 use crate::api::error::{ApiError, from_aspnet};

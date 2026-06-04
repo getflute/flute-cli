@@ -163,8 +163,8 @@ async fn dispatch_customers(
 ) -> anyhow::Result<()> {
     use cli::CustomersCommand;
     use cli::customers::{
-        build_add_ach_body, build_add_card_body, build_customer_body, render_customer,
-        render_customer_list, render_payment_method, render_payment_methods,
+        build_add_ach_body, build_add_card_body, build_customer_body, merge_customer_update,
+        render_customer, render_customer_list, render_payment_method, render_payment_methods,
     };
 
     match cc {
@@ -208,14 +208,13 @@ async fn dispatch_customers(
             company,
             mobile,
         } => {
-            let body = build_customer_body(
-                first_name.as_deref(),
-                last_name.as_deref(),
-                company.as_deref(),
-                email.as_deref(),
-                mobile.as_deref(),
-            );
+            // PUT is a full replacement: GET current values first, merge in the
+            // user-supplied flags, then PUT the merged body so omitted flags
+            // retain their existing values instead of being wiped.
             let (p, api) = build_client(profile)?;
+            let current = api.get_customer(&id).await?;
+            let body =
+                merge_customer_update(&current, first_name, last_name, company, email, mobile);
             let result = api.update_customer(&id, body).await?;
             render_customer(&result, output_fmt, &p.name)
         }
@@ -320,6 +319,17 @@ async fn dispatch_ach(
             customer_id,
             payment_method_id,
             faster,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_postal_code,
+            billing_country_id,
+            contact_first_name,
+            contact_last_name,
+            contact_email,
+            contact_phone,
+            contact_company,
         } => {
             let amt = parse_amount(&amount)?;
             execute_ach_txn(
@@ -338,6 +348,17 @@ async fn dispatch_ach(
                     customer_id,
                     payment_method_id,
                     faster,
+                    billing_line1,
+                    billing_line2,
+                    billing_city,
+                    billing_state,
+                    billing_postal_code,
+                    billing_country_id,
+                    contact_first_name,
+                    contact_last_name,
+                    contact_email,
+                    contact_phone,
+                    contact_company,
                 },
                 AchTxnKind::Debit,
             )
@@ -356,6 +377,17 @@ async fn dispatch_ach(
             customer_id,
             payment_method_id,
             faster,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_postal_code,
+            billing_country_id,
+            contact_first_name,
+            contact_last_name,
+            contact_email,
+            contact_phone,
+            contact_company,
         } => {
             let amt = parse_amount(&amount)?;
             execute_ach_txn(
@@ -374,6 +406,17 @@ async fn dispatch_ach(
                     customer_id,
                     payment_method_id,
                     faster,
+                    billing_line1,
+                    billing_line2,
+                    billing_city,
+                    billing_state,
+                    billing_postal_code,
+                    billing_country_id,
+                    contact_first_name,
+                    contact_last_name,
+                    contact_email,
+                    contact_phone,
+                    contact_company,
                 },
                 AchTxnKind::Credit,
             )

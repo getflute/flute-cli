@@ -28,7 +28,10 @@ these are NOT in the spec's CLI flags (same gap as `currencyId` for card). Expos
 - `taxId`: string nullable — `--tax-id` (optional)
 - `customerId`/`paymentMethodId`: uuid nullable — `--customer-id`/`--payment-method-id` (vaulted ACH)
 - `isFasterProcessing`: bool — `--faster` (default false)
-- `percentageOffRate`, billing/shipping/contact: not exposed (YAGNI)
+- `billingAddress` (AddressIsvDto): `--billing-line1`→line1, `--billing-line2`→line2, `--billing-city`→city, `--billing-state`→stateName, `--billing-postal-code`→postalCode, `--billing-country-id`→countryId (i32). Object included only when ≥1 field present.
+- `contactInfo` (ContactInfoIsvDto): `--contact-first-name`→firstName, `--contact-last-name`→lastName, `--contact-email`→email, `--contact-phone`→mobileNumber, `--contact-company`→companyName. Object included only when ≥1 field present.
+- **LIVE NOTE**: The live sandbox rejects ACH debit/credit without `accountHolderType`, `billingAddress`, and `contactInfo` even though these are not listed as required in the OpenAPI spec. Always supply `--account-holder-type`, at least one `--billing-*` field, and at least one `--contact-*` field for live calls.
+- `percentageOffRate`, shipping: not exposed (YAGNI)
 
 `ach void`/`ach refund`: bodyless POST by path id → `self.send(POST, ".../{id}/void", None)`.
 Response: AchPaymentResponseIsvDto (handle as Value; render with render_transaction or a small ACH renderer).
@@ -54,9 +57,9 @@ optional nested `billingAddress`/`shippingAddress`. CLI: `--first-name`, `--last
 `--company`, `--mobile`. Send only provided fields.
 
 ### UpdateCustomerRequestIsvDto
-Same basic fields as create. `customers update <id> --email … --first-name …` — send only provided.
-NOTE: PUT may be full-replace; send the fields the user passes (document that omitted fields may reset
-server-side if the API treats PUT as full replacement — confirm live; if so, consider GET-merge-PUT later).
+Same basic fields as create. `customers update <id> --email … --first-name …`.
+**LIVE NOTE**: The PUT endpoint is a **full replacement** — sending only `--email` wipes `firstName`/`lastName`/etc.
+The CLI now does **GET-merge-PUT**: it fetches the current customer record first, overlays only the user-supplied flags, then PUTs the complete merged body. Omitted flags retain their existing server values.
 
 ### list query params (server-side!): `page`, `pageSize` (←`--limit`), `orderBy`, `asc`, `search` (←`--search`), `customerIds`, `dateFrom`, `dateTo`
 Unlike transactions, `search` IS a real server param — wire `--search`→`search`, `--limit`→`pageSize`.

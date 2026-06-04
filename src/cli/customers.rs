@@ -13,6 +13,56 @@ use crate::cli::transactions::parse_exp;
 
 // ── Body-builders ─────────────────────────────────────────────────────────────
 
+/// Merge user-supplied update flags onto the current customer record, producing
+/// a full PUT body (GET-merge-PUT pattern).
+///
+/// The PUT endpoint is a **full replacement**: any field absent from the body
+/// is silently wiped on the server. This helper overlays only the flags the
+/// user explicitly provided; all other fields are taken from `current` (the
+/// GET response), so omitted flags retain their existing values.
+///
+/// This is a **pure function** — no I/O, no network.
+///
+/// # Field mapping (current response → request body)
+/// | GET response key        | PUT body key          |
+/// |-------------------------|-----------------------|
+/// | `firstName`             | `firstName`           |
+/// | `lastName`              | `lastName`            |
+/// | `companyName`           | `companyName`         |
+/// | `email`                 | `email`               |
+/// | `mobilePhoneNumber`     | `mobilePhoneNumber`   |
+pub fn merge_customer_update(
+    current: &Value,
+    first_name: Option<String>,
+    last_name: Option<String>,
+    company: Option<String>,
+    email: Option<String>,
+    mobile: Option<String>,
+) -> Value {
+    let get_str = |key: &str| {
+        current
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
+
+    // For each field: use the user-supplied value if present, else the current value.
+    // If neither is available (new customer with no value set), omit the key.
+    let merged_first_name = first_name.or_else(|| get_str("firstName"));
+    let merged_last_name = last_name.or_else(|| get_str("lastName"));
+    let merged_company = company.or_else(|| get_str("companyName"));
+    let merged_email = email.or_else(|| get_str("email"));
+    let merged_mobile = mobile.or_else(|| get_str("mobilePhoneNumber"));
+
+    build_customer_body(
+        merged_first_name.as_deref(),
+        merged_last_name.as_deref(),
+        merged_company.as_deref(),
+        merged_email.as_deref(),
+        merged_mobile.as_deref(),
+    )
+}
+
 /// Build the JSON request body for `customers create` and `customers update`.
 ///
 /// All fields are optional (the spec has no required fields on Create/Update).
@@ -403,6 +453,88 @@ pub(crate) fn payment_methods_table(items: &[Value]) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // ── merge_customer_update ─────────────────────────────────────────────────
+
+    /// Golden test: only email provided → firstName/lastName preserved from current.
+    #[test]
+    fn merge_customer_update_email_only_preserves_name() {
+        let current = json!({
+            "firstName": "A",
+            "lastName": "B",
+            "email": "old@example.com"
+        });
+        let body = merge_customer_update(
+            &current,
+            None,
+            None,
+            None,
+            Some("new@example.com".into()),
+            None,
+        );
+        assert_eq!(body["firstName"], "A", "firstName must be preserved");
+        assert_eq!(body["lastName"], "B", "lastName must be preserved");
+        assert_eq!(body["email"], "new@example.com", "email must be updated");
+        assert!(
+            body.get("mobilePhoneNumber").is_none(),
+            "mobilePhoneNumber absent in current must not appear"
+        );
+        assert!(
+            body.get("companyName").is_none(),
+            "companyName absent in current must not appear"
+        );
+    }
+
+    /// All user-provided flags override all current values.
+    #[test]
+    fn merge_customer_update_all_flags_override_all_current() {
+        let current = json!({
+            "firstName": "Old",
+            "lastName": "Name",
+            "companyName": "OldCo",
+            "email": "old@example.com",
+            "mobilePhoneNumber": "0000000000"
+        });
+        let body = merge_customer_update(
+            &current,
+            Some("New".into()),
+            Some("Person".into()),
+            Some("NewCo".into()),
+            Some("new@example.com".into()),
+            Some("9999999999".into()),
+        );
+        assert_eq!(body["firstName"], "New");
+        assert_eq!(body["lastName"], "Person");
+        assert_eq!(body["companyName"], "NewCo");
+        assert_eq!(body["email"], "new@example.com");
+        assert_eq!(body["mobilePhoneNumber"], "9999999999");
+    }
+
+    /// No flags provided → all current values pass through unchanged.
+    #[test]
+    fn merge_customer_update_no_flags_preserves_all_current() {
+        let current = json!({
+            "firstName": "Alice",
+            "lastName": "Smith",
+            "email": "alice@example.com",
+            "mobilePhoneNumber": "5550001234",
+            "companyName": "Acme"
+        });
+        let body = merge_customer_update(&current, None, None, None, None, None);
+        assert_eq!(body["firstName"], "Alice");
+        assert_eq!(body["lastName"], "Smith");
+        assert_eq!(body["email"], "alice@example.com");
+        assert_eq!(body["mobilePhoneNumber"], "5550001234");
+        assert_eq!(body["companyName"], "Acme");
+    }
+
+    /// Current has no values, no flags → empty body.
+    #[test]
+    fn merge_customer_update_empty_current_no_flags_is_empty_object() {
+        let current = json!({});
+        let body = merge_customer_update(&current, None, None, None, None, None);
+        assert!(body.as_object().unwrap().is_empty());
+    }
 
     // ── build_customer_body ───────────────────────────────────────────────────
 

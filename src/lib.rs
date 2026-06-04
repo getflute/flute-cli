@@ -156,6 +156,128 @@ fn parse_txn_money(
     })
 }
 
+async fn dispatch_pos(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    pc: cli::PosCommand,
+) -> anyhow::Result<()> {
+    use cli::PosCommand;
+    use cli::pos::{
+        PollOutcome, PosCreateArgs, build_pos_create_body, render_pos_transaction,
+        render_pos_transaction_list, run_wait_poll,
+    };
+
+    match pc {
+        PosCommand::Create {
+            terminal_id,
+            amount,
+            transaction_type,
+            currency_id,
+            tip_amount,
+            tip_rate,
+            pos_device_id,
+            reference_id,
+            payment_processor_id,
+            customer_id,
+            target_transaction_id,
+            reading_method,
+            wait,
+            wait_timeout,
+        } => {
+            let args = PosCreateArgs {
+                terminal_id,
+                transaction_type,
+                amount,
+                currency_id,
+                tip_amount,
+                tip_rate,
+                pos_device_id,
+                reference_id,
+                payment_processor_id,
+                customer_id,
+                target_transaction_id,
+                reading_method,
+                wait,
+            };
+            let body = build_pos_create_body(&args)?;
+            let (p, api) = build_client(profile)?;
+            let created = api.create_pos_transaction(body).await?;
+
+            if !wait {
+                return render_pos_transaction(&created, output_fmt, &p.name);
+            }
+
+            // Extract the POS transaction id to use for polling.
+            let pos_id = created
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("create response missing 'id' field"))?
+                .to_string();
+
+            // Clone the api for the closure (ApiClient is Clone).
+            let api_clone = api.clone();
+            let getter = move |id: String| {
+                let api = api_clone.clone();
+                async move {
+                    api.get_pos_transaction(&id)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            };
+
+            let outcome = run_wait_poll(&pos_id, wait_timeout, getter).await?;
+
+            match outcome {
+                PollOutcome::Completed(v) => {
+                    render_pos_transaction(&v, output_fmt, &p.name)?;
+                }
+                PollOutcome::TimedOut(v) => {
+                    // Print what we know, then indicate timeout on stderr.
+                    render_pos_transaction(&v, output_fmt, &p.name)?;
+                    eprintln!(
+                        "Warning: --wait-timeout ({wait_timeout}s) expired; last status shown above."
+                    );
+                    std::process::exit(1);
+                }
+                PollOutcome::Interrupted(v) => {
+                    // Ctrl-C: print last-known state to stderr and exit gracefully.
+                    if v.is_null() {
+                        eprintln!("Interrupted before first poll. Transaction id: {pos_id}");
+                    } else {
+                        let status = v
+                            .get("posTransactionStatus")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("unknown");
+                        eprintln!("Interrupted. Last known status: {status} (id: {pos_id})");
+                    }
+                }
+            }
+            Ok(())
+        }
+        PosCommand::Get { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.get_pos_transaction(&id).await?;
+            render_pos_transaction(&result, output_fmt, &p.name)
+        }
+        PosCommand::List {
+            limit,
+            page,
+            terminal_id,
+        } => {
+            let (p, api) = build_client(profile)?;
+            let result = api
+                .list_pos_transactions(page, Some(limit), terminal_id.as_deref())
+                .await?;
+            render_pos_transaction_list(&result, output_fmt, &p.name)
+        }
+        PosCommand::Cancel { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.cancel_pos_transaction(&id).await?;
+            render_pos_transaction(&result, output_fmt, &p.name)
+        }
+    }
+}
+
 async fn dispatch_terminals(
     profile: &str,
     output_fmt: cli::OutputFormat,
@@ -743,6 +865,7 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Customers(cc) => dispatch_customers(&profile, output_fmt, *cc).await,
             cli::Command::Terminals(tc) => dispatch_terminals(&profile, output_fmt, *tc).await,
             cli::Command::Devices(dc) => dispatch_devices(&profile, output_fmt, *dc).await,
+            cli::Command::Pos(pc) => dispatch_pos(&profile, output_fmt, *pc).await,
         };
 
         // On failure: always call process::exit with the semantic exit code.

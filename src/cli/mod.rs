@@ -8,6 +8,7 @@ pub mod customers;
 pub mod devices;
 pub mod money;
 pub mod output;
+pub mod pos;
 pub mod terminals;
 pub mod transactions;
 pub mod util;
@@ -63,6 +64,9 @@ pub enum Command {
     /// Device operations (list, get, register, ttp-jwt, ttp-activate).
     #[command(subcommand)]
     Devices(Box<DevicesCommand>),
+    /// POS transaction operations (create [--wait], get, list, cancel).
+    #[command(subcommand)]
+    Pos(Box<PosCommand>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -752,6 +756,108 @@ pub enum DevicesCommand {
     /// This is a bodyless POST — no request body is sent.
     TtpActivate {
         /// Device ID (positional).
+        id: String,
+    },
+}
+
+/// POS transaction subcommands — Phase 3 Task 3.2.
+// PosCommand::Create carries many optional String fields (all the POS request
+// fields). The enum is always heap-allocated via `Box<PosCommand>` in `Command`,
+// so the stack impact is a single pointer. The lint would push us towards nested
+// boxing of individual fields without benefit.
+#[allow(clippy::large_enum_variant)]
+#[derive(Subcommand, Debug)]
+pub enum PosCommand {
+    /// Create a POS transaction (POST /pos-api/v1/pos-transactions).
+    ///
+    /// Use `--wait` to long-poll until the terminal completes or rejects the
+    /// transaction.  Ctrl-C gracefully interrupts the poll and prints the
+    /// last-known status.
+    Create {
+        /// Terminal UUID to send the transaction to (required).
+        #[arg(long, required = true)]
+        terminal_id: String,
+
+        /// Transaction amount. Plain decimal, e.g. `100.00`. Required for Sale/Auth.
+        #[arg(long)]
+        amount: Option<String>,
+
+        /// Transaction type ID: 1=Authorization, 2=Sale (default), 3=Capture, 4=Void, 5=Refund.
+        #[arg(long, default_value_t = 2)]
+        transaction_type: i32,
+
+        /// Currency ID (default 1 = USD).
+        #[arg(long, default_value_t = 1)]
+        currency_id: i32,
+
+        /// Tip amount. Plain decimal, e.g. `5.00`.
+        #[arg(long)]
+        tip_amount: Option<String>,
+
+        /// Tip rate as a decimal fraction, e.g. `0.18` for 18%.
+        #[arg(long)]
+        tip_rate: Option<String>,
+
+        /// POS device ID. Marked "Mandatory" by the API; include for live calls.
+        #[arg(long)]
+        pos_device_id: Option<String>,
+
+        /// Merchant-assigned reference ID for idempotency tracking.
+        #[arg(long)]
+        reference_id: Option<String>,
+
+        /// Payment processor UUID.
+        #[arg(long)]
+        payment_processor_id: Option<String>,
+
+        /// Customer UUID for vault-linked transactions.
+        #[arg(long)]
+        customer_id: Option<String>,
+
+        /// Target transaction UUID (required for Void/Capture/Refund types).
+        #[arg(long)]
+        target_transaction_id: Option<String>,
+
+        /// Reading method ID: 1=Reading (default), 2=KeyedIn. Omit to let the server decide.
+        #[arg(long)]
+        reading_method: Option<i32>,
+
+        /// Long-poll for terminal acceptance: set `waitForAcceptanceByTerminal=true` and
+        /// poll GET /pos-transactions/{id} every 2 seconds until isCompleted or timeout.
+        #[arg(long)]
+        wait: bool,
+
+        /// Seconds to wait before giving up the poll (default 120). Requires `--wait`.
+        #[arg(long, default_value_t = 120)]
+        wait_timeout: u64,
+    },
+
+    /// Fetch a single POS transaction by ID (GET /pos-api/v1/pos-transactions/{id}).
+    Get {
+        /// POS transaction UUID to retrieve (positional).
+        id: String,
+    },
+
+    /// List POS transactions (GET /pos-api/v1/pos-transactions).
+    List {
+        /// Maximum results per page (default 25). Maps to `pageSize` on the API.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+
+        /// Page number to fetch (1-based). Maps to `page` on the API.
+        #[arg(long)]
+        page: Option<u32>,
+
+        /// Filter by terminal UUID. Maps to `terminalId` on the API.
+        #[arg(long)]
+        terminal_id: Option<String>,
+    },
+
+    /// Cancel a POS transaction (POST /pos-api/v1/pos-transactions/{id}/cancel).
+    ///
+    /// This is a bodyless POST — no request body is sent.
+    Cancel {
+        /// POS transaction UUID to cancel (positional).
         id: String,
     },
 }

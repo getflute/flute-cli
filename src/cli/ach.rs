@@ -93,11 +93,13 @@ pub struct AchArgs {
     pub billing_line2: Option<String>,
     /// `billingAddress.city` — optional.
     pub billing_city: Option<String>,
-    /// `billingAddress.stateName` — optional.
+    /// `billingAddress.stateName` — optional (free-text state name).
     pub billing_state: Option<String>,
+    /// `billingAddress.stateId` — numeric state ID required by live API (US: use integer ID; countryId must be 1).
+    pub billing_state_id: Option<i32>,
     /// `billingAddress.postalCode` — optional.
     pub billing_postal_code: Option<String>,
-    /// `billingAddress.countryId` — optional.
+    /// `billingAddress.countryId` — optional (US = 1).
     pub billing_country_id: Option<i32>,
 
     // ── contactInfo (ContactInfoIsvDto) ───────────────────────────────────────
@@ -132,7 +134,7 @@ pub struct AchArgs {
 /// | `customer_id`         | `customerId`           | optional, omitted when `None`           |
 /// | `payment_method_id`   | `paymentMethodId`      | optional, omitted when `None`           |
 /// | `faster`              | `isFasterProcessing`   | always present (non-nullable), default false |
-/// | `billing_*`           | `billingAddress{…}`    | AddressIsvDto; included only when ≥1 field present |
+/// | `billing_*`           | `billingAddress{…}`    | AddressIsvDto; included only when ≥1 field present; `billing_state_id`→`stateId` (int, live-required for US; use with `countryId=1`) |
 /// | `contact_*`           | `contactInfo{…}`       | ContactInfoIsvDto; included only when ≥1 field present |
 pub fn build_ach_body(args: &AchArgs) -> Result<Value> {
     let mut obj = Map::new();
@@ -191,6 +193,9 @@ pub fn build_ach_body(args: &AchArgs) -> Result<Value> {
         }
         if let Some(v) = &args.billing_state {
             addr.insert("stateName".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = args.billing_state_id {
+            addr.insert("stateId".into(), json!(v));
         }
         if let Some(v) = &args.billing_postal_code {
             addr.insert("postalCode".into(), Value::String(v.clone()));
@@ -279,6 +284,7 @@ mod tests {
             billing_line2: None,
             billing_city: None,
             billing_state: None,
+            billing_state_id: None,
             billing_postal_code: None,
             billing_country_id: None,
             contact_first_name: None,
@@ -362,6 +368,7 @@ mod tests {
             billing_line2: None,
             billing_city: None,
             billing_state: None,
+            billing_state_id: None,
             billing_postal_code: None,
             billing_country_id: None,
             contact_first_name: None,
@@ -406,6 +413,7 @@ mod tests {
             billing_line2: None,
             billing_city: None,
             billing_state: None,
+            billing_state_id: None,
             billing_postal_code: None,
             billing_country_id: None,
             contact_first_name: None,
@@ -453,6 +461,7 @@ mod tests {
             billing_line2: None,
             billing_city: None,
             billing_state: None,
+            billing_state_id: None,
             billing_postal_code: None,
             billing_country_id: None,
             contact_first_name: None,
@@ -487,6 +496,7 @@ mod tests {
             billing_line2: None,
             billing_city: None,
             billing_state: None,
+            billing_state_id: None,
             billing_postal_code: None,
             billing_country_id: None,
             contact_first_name: None,
@@ -504,7 +514,8 @@ mod tests {
 
     // ── billing + contact golden tests ───────────────────────────────────────
 
-    /// Golden test: billing address fields map to the correct camelCase wire keys.
+    /// Golden test: billing address fields map to the correct camelCase wire keys,
+    /// including the numeric `stateId` required by the live API.
     #[test]
     fn build_ach_debit_body_with_billing_and_contact() {
         let mut args = base_args();
@@ -513,8 +524,9 @@ mod tests {
         args.billing_line2 = Some("Suite 4".into());
         args.billing_city = Some("Springfield".into());
         args.billing_state = Some("IL".into());
+        args.billing_state_id = Some(14); // IL numeric state ID; live API requires stateId (int)
         args.billing_postal_code = Some("62701".into());
-        args.billing_country_id = Some(840);
+        args.billing_country_id = Some(1); // US = 1 (live-required alongside stateId)
         args.contact_first_name = Some("Jane".into());
         args.contact_last_name = Some("Doe".into());
         args.contact_email = Some("jane@example.com".into());
@@ -532,8 +544,10 @@ mod tests {
         assert_eq!(billing["line2"], "Suite 4");
         assert_eq!(billing["city"], "Springfield");
         assert_eq!(billing["stateName"], "IL");
+        // stateId must be emitted as an integer (live API rejects free-text)
+        assert_eq!(billing["stateId"], 14, "stateId must be present as integer");
         assert_eq!(billing["postalCode"], "62701");
-        assert_eq!(billing["countryId"], 840);
+        assert_eq!(billing["countryId"], 1, "US countryId must be 1");
 
         // contactInfo nested object — exact camelCase wire keys
         let contact = &body["contactInfo"];
@@ -549,6 +563,25 @@ mod tests {
         assert_eq!(body["accountType"], 1);
         assert_eq!(body["paymentProcessorId"], "pp-1");
         assert_eq!(body["isFasterProcessing"], false);
+    }
+
+    /// Golden test: stateId alone (no stateName) is accepted — partial billing works.
+    #[test]
+    fn build_ach_body_billing_state_id_only() {
+        let mut args = base_args();
+        args.billing_state_id = Some(14);
+        args.billing_country_id = Some(1);
+        let body = build_ach_body(&args).unwrap();
+        let billing = &body["billingAddress"];
+        assert_eq!(
+            billing["stateId"], 14,
+            "stateId must be present as integer when provided"
+        );
+        assert_eq!(billing["countryId"], 1);
+        assert!(
+            billing.get("stateName").is_none(),
+            "stateName must be absent when not provided"
+        );
     }
 
     /// billingAddress is omitted entirely when no billing fields are provided.
@@ -631,6 +664,7 @@ mod tests {
             billing_line2: None,
             billing_city: None,
             billing_state: None,
+            billing_state_id: None,
             billing_postal_code: None,
             billing_country_id: None,
             contact_first_name: None,

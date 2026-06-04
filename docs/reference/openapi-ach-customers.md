@@ -28,7 +28,7 @@ these are NOT in the spec's CLI flags (same gap as `currencyId` for card). Expos
 - `taxId`: string nullable — `--tax-id` (optional)
 - `customerId`/`paymentMethodId`: uuid nullable — `--customer-id`/`--payment-method-id` (vaulted ACH)
 - `isFasterProcessing`: bool — `--faster` (default false)
-- `billingAddress` (AddressIsvDto): `--billing-line1`→line1, `--billing-line2`→line2, `--billing-city`→city, `--billing-state`→stateName, `--billing-postal-code`→postalCode, `--billing-country-id`→countryId (i32). Object included only when ≥1 field present.
+- `billingAddress` (AddressIsvDto): `--billing-line1`→line1, `--billing-line2`→line2, `--billing-city`→city, `--billing-state`→stateName, `--billing-state-id`→stateId (i32, **required live** — the API rejects free-text state; pair with `--billing-country-id 1` for US), `--billing-postal-code`→postalCode, `--billing-country-id`→countryId (i32; US = 1). Object included only when ≥1 field present.
 - `contactInfo` (ContactInfoIsvDto): `--contact-first-name`→firstName, `--contact-last-name`→lastName, `--contact-email`→email, `--contact-phone`→mobileNumber, `--contact-company`→companyName. Object included only when ≥1 field present.
 - **LIVE NOTE**: The live sandbox rejects ACH debit/credit without `accountHolderType`, `billingAddress`, and `contactInfo` even though these are not listed as required in the OpenAPI spec. Always supply `--account-holder-type`, at least one `--billing-*` field, and at least one `--contact-*` field for live calls.
 - `percentageOffRate`, shipping: not exposed (YAGNI)

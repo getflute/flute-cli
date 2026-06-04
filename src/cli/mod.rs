@@ -372,11 +372,16 @@ pub enum AchCommand {
         #[arg(long)]
         billing_state: Option<String>,
 
+        /// Billing state ID (integer). The live API requires a numeric stateId; use
+        /// alongside `--billing-country-id 1` for US addresses.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+
         /// Billing postal/ZIP code.
         #[arg(long)]
         billing_postal_code: Option<String>,
 
-        /// Billing country ID (integer, e.g. `840` for USA).
+        /// Billing country ID (integer; US = 1). Required alongside --billing-state-id for live calls.
         #[arg(long)]
         billing_country_id: Option<i32>,
 
@@ -472,11 +477,16 @@ pub enum AchCommand {
         #[arg(long)]
         billing_state: Option<String>,
 
+        /// Billing state ID (integer). The live API requires a numeric stateId; use
+        /// alongside `--billing-country-id 1` for US addresses.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+
         /// Billing postal/ZIP code.
         #[arg(long)]
         billing_postal_code: Option<String>,
 
-        /// Billing country ID (integer, e.g. `840` for USA).
+        /// Billing country ID (integer; US = 1). Required alongside --billing-state-id for live calls.
         #[arg(long)]
         billing_country_id: Option<i32>,
 

@@ -1,5 +1,11 @@
 # OpenAPI wire-format reference — Transactions (Phase 1)
 
+> **API version: v1.** This CLI targets the **v1** ISV API surface (`/pay-api/v1/…`). The card
+> field on v1 is `accountNumber` (not `cardNumber`). PR aurora-payments/arise-backend#1099
+> (`creditCard*` → `card*` rename + strict unknown-field rejection) is **v2-only and does NOT
+> affect v1** — confirmed by the PR ("v1 is unaffected"). If the CLI is ever migrated to v2, those
+> renames and the 400-on-unknown-field behavior must be handled (audit every field we send).
+
 Pinned from `https://api.uat.arise.risewithaurora.com/isv-api/swagger/v1/swagger.json`
 (title "ISV API BFF", release-3.0.0). Field names/casing are authoritative; model serde
 DTOs to match exactly. All amount fields on the wire are JSON `number` (double); the CLI

@@ -1,5 +1,11 @@
 # OpenAPI wire-format reference — ACH + Customers (Phase 2)
 
+> **API version: v1.** This CLI targets **v1**. add-card uses `pan`; ACH/transactions use
+> `accountNumber`; customer response array is `cards`; nested-create cards would be `paymentMethodsCards`.
+> PR aurora-payments/arise-backend#1099 (v2 `creditCardNumber→cardNumber`,
+> `paymentMethodsCreditCards→paymentMethodsCards`, `creditCards→cards`, + v2 strict unknown-field
+> rejection) is **v2-only; v1 is unaffected** (per the PR). No v1 field we send is renamed by it.
+
 Pinned from the UAT OpenAPI ("ISV API BFF"). Field names/casing authoritative.
 Amounts: parse `--amount` as `Decimal`, emit via `to_amount_number` (exact JSON number).
 Model request bodies as `serde_json::Value` builders; responses as `serde_json::Value`

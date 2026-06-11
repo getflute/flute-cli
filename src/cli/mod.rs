@@ -798,12 +798,13 @@ pub enum PosCommand {
         #[arg(long)]
         tip_rate: Option<String>,
 
-        /// POS device ID. Marked "Mandatory" by the API; include for live calls.
-        #[arg(long)]
+        /// POS device ID (required). The API rejects creates without this field.
+        #[arg(long, required = true)]
         pos_device_id: Option<String>,
 
-        /// Merchant-assigned reference ID for idempotency tracking.
-        #[arg(long)]
+        /// Merchant-assigned reference ID for idempotency tracking (required).
+        /// The API rejects creates without this field.
+        #[arg(long, required = true)]
         reference_id: Option<String>,
 
         /// Payment processor UUID.

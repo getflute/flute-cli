@@ -99,3 +99,50 @@ fn pos_get_without_id_fails() {
 fn pos_cancel_without_id_fails() {
     flute().args(["pos", "cancel"]).assert().failure();
 }
+
+/// `flute pos create --terminal-id <id>` without `--pos-device-id` must exit
+/// non-zero — the API rejects creates without a device id.
+#[test]
+fn pos_create_without_pos_device_id_fails() {
+    flute()
+        .args([
+            "pos",
+            "create",
+            "--terminal-id",
+            "term-abc",
+            "--reference-id",
+            "ref-123",
+        ])
+        .assert()
+        .failure();
+}
+
+/// `flute pos create --terminal-id <id>` without `--reference-id` must exit
+/// non-zero — the API rejects creates without a reference id.
+#[test]
+fn pos_create_without_reference_id_fails() {
+    flute()
+        .args([
+            "pos",
+            "create",
+            "--terminal-id",
+            "term-abc",
+            "--pos-device-id",
+            "dev-001",
+        ])
+        .assert()
+        .failure();
+}
+
+/// `flute pos create --help` documents both --pos-device-id and --reference-id.
+#[test]
+fn pos_create_help_mentions_pos_device_id_and_reference_id() {
+    flute()
+        .args(["pos", "create", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("--pos-device-id")
+                .and(predicate::str::contains("--reference-id")),
+        );
+}

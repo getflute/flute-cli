@@ -116,6 +116,35 @@ pub fn build_pos_create_body(args: &PosCreateArgs) -> anyhow::Result<Value> {
     Ok(Value::Object(obj))
 }
 
+// ── Field-name normalisation helpers ─────────────────────────────────────────
+
+/// Return the POS transaction ID regardless of which API operation produced `v`.
+///
+/// - **create / cancel** responses use `posTransactionId`
+/// - **get / list** responses use `id`
+///
+/// Tries `id` first (the most common shape), then falls back to
+/// `posTransactionId`.
+pub(crate) fn pos_id(v: &Value) -> Option<&str> {
+    v.get("id")
+        .and_then(|x| x.as_str())
+        .or_else(|| v.get("posTransactionId").and_then(|x| x.as_str()))
+}
+
+/// Return the POS transaction status string regardless of which API operation
+/// produced `v`.
+///
+/// - **create / cancel** responses use `status`
+/// - **get / list** responses use `posTransactionStatus`
+///
+/// Tries `posTransactionStatus` first (the richer field name), then falls back
+/// to `status`.
+pub(crate) fn pos_status(v: &Value) -> Option<&str> {
+    v.get("posTransactionStatus")
+        .and_then(|x| x.as_str())
+        .or_else(|| v.get("status").and_then(|x| x.as_str()))
+}
+
 // ── pos_is_final ──────────────────────────────────────────────────────────────
 
 /// Pure decision function: returns `true` when the POS transaction has reached
@@ -153,10 +182,10 @@ pub(crate) fn pos_transaction_table(v: &Value) -> String {
 
     format!(
         "id:                   {}\nterminalId:           {}\ntransactionType:      {}\nposTransactionStatus: {}\namount:               {}\nisCompleted:          {}\ntransactionId:        {}",
-        get_str("id"),
+        pos_id(v).unwrap_or("—"),
         get_str("terminalId"),
         get_str("transactionType"),
-        get_str("posTransactionStatus"),
+        pos_status(v).unwrap_or("—"),
         get_num("amount"),
         get_bool("isCompleted"),
         get_str("transactionId"),
@@ -175,7 +204,7 @@ pub(crate) fn pos_transaction_list_table(items: &[Value]) -> String {
     let mut rows = vec![header, separator];
 
     for item in items {
-        let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("—");
+        let id = pos_id(item).unwrap_or("—");
         let terminal_id = item
             .get("terminalId")
             .and_then(|v| v.as_str())
@@ -184,10 +213,7 @@ pub(crate) fn pos_transaction_list_table(items: &[Value]) -> String {
             .get("transactionType")
             .and_then(|v| v.as_str())
             .unwrap_or("—");
-        let status = item
-            .get("posTransactionStatus")
-            .and_then(|v| v.as_str())
-            .unwrap_or("—");
+        let status = pos_status(item).unwrap_or("—");
         let amount = item
             .get("amount")
             .and_then(|v| v.as_f64().map(|f| format!("{f:.2}")))
@@ -231,7 +257,7 @@ pub fn render_pos_transaction(
             println!("{}", pos_transaction_table(v));
         }
         OutputFormat::Quiet => {
-            let id = v.get("id").and_then(|x| x.as_str()).unwrap_or("—");
+            let id = pos_id(v).unwrap_or("—");
             println!("{id}");
         }
     }
@@ -264,7 +290,7 @@ pub fn render_pos_transaction_list(
         }
         OutputFormat::Quiet => {
             for item in &items {
-                println!("{}", item.get("id").and_then(|x| x.as_str()).unwrap_or("—"));
+                println!("{}", pos_id(item).unwrap_or("—"));
             }
         }
     }
@@ -341,6 +367,59 @@ where
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // ── pos_id ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn pos_id_reads_id_from_get_shape() {
+        let v = json!({ "id": "g-1", "posTransactionStatus": "Completed", "isCompleted": true });
+        assert_eq!(pos_id(&v), Some("g-1"));
+    }
+
+    #[test]
+    fn pos_id_reads_pos_transaction_id_from_create_shape() {
+        let v = json!({ "posTransactionId": "p-1", "status": "TerminalConnecting", "statusId": 1 });
+        assert_eq!(pos_id(&v), Some("p-1"));
+    }
+
+    #[test]
+    fn pos_id_returns_none_when_both_absent() {
+        let v = json!({ "amount": 10.00 });
+        assert_eq!(pos_id(&v), None);
+    }
+
+    #[test]
+    fn pos_id_prefers_id_when_both_present() {
+        // Should not happen in practice, but id wins.
+        let v = json!({ "id": "canonical", "posTransactionId": "alternate" });
+        assert_eq!(pos_id(&v), Some("canonical"));
+    }
+
+    // ── pos_status ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn pos_status_reads_pos_transaction_status_from_get_shape() {
+        let v = json!({ "id": "g-1", "posTransactionStatus": "Completed", "isCompleted": true });
+        assert_eq!(pos_status(&v), Some("Completed"));
+    }
+
+    #[test]
+    fn pos_status_reads_status_from_create_shape() {
+        let v = json!({ "posTransactionId": "p-1", "status": "TerminalConnecting", "statusId": 1 });
+        assert_eq!(pos_status(&v), Some("TerminalConnecting"));
+    }
+
+    #[test]
+    fn pos_status_returns_none_when_both_absent() {
+        let v = json!({ "id": "x" });
+        assert_eq!(pos_status(&v), None);
+    }
+
+    #[test]
+    fn pos_status_prefers_pos_transaction_status_when_both_present() {
+        let v = json!({ "posTransactionStatus": "Completed", "status": "TerminalConnecting" });
+        assert_eq!(pos_status(&v), Some("Completed"));
+    }
 
     // ── pos_is_final ──────────────────────────────────────────────────────────
 
@@ -519,6 +598,44 @@ mod tests {
         assert!(table.contains('—'));
     }
 
+    /// create/cancel shape: `posTransactionId` + `status` must render correctly.
+    #[test]
+    fn pos_transaction_table_renders_create_shape() {
+        let v = json!({
+            "posTransactionId": "p-1",
+            "status": "TerminalConnecting",
+            "statusId": 1
+        });
+        let table = pos_transaction_table(&v);
+        assert!(
+            table.contains("p-1"),
+            "table must contain posTransactionId value; got: {table}"
+        );
+        assert!(
+            table.contains("TerminalConnecting"),
+            "table must contain status value; got: {table}"
+        );
+    }
+
+    /// get/list shape: `id` + `posTransactionStatus` must still render correctly.
+    #[test]
+    fn pos_transaction_table_renders_get_shape() {
+        let v = json!({
+            "id": "g-1",
+            "posTransactionStatus": "Completed",
+            "isCompleted": true
+        });
+        let table = pos_transaction_table(&v);
+        assert!(
+            table.contains("g-1"),
+            "table must contain id value; got: {table}"
+        );
+        assert!(
+            table.contains("Completed"),
+            "table must contain posTransactionStatus value; got: {table}"
+        );
+    }
+
     // ── pos_transaction_list_table ────────────────────────────────────────────
 
     #[test]
@@ -550,6 +667,71 @@ mod tests {
         assert!(table.contains("ID"));
         let lines: Vec<&str> = table.lines().collect();
         assert_eq!(lines.len(), 2); // header + separator
+    }
+
+    /// List table must render create-shape items (posTransactionId + status).
+    #[test]
+    fn pos_transaction_list_table_renders_create_shape() {
+        let item = json!({
+            "posTransactionId": "p-1",
+            "status": "TerminalConnecting",
+            "statusId": 1
+        });
+        let table = pos_transaction_list_table(&[item]);
+        assert!(
+            table.contains("p-1"),
+            "list table must contain posTransactionId; got: {table}"
+        );
+        assert!(
+            table.contains("TerminalConnecting"),
+            "list table must contain status; got: {table}"
+        );
+    }
+
+    /// List table must render get-shape items (id + posTransactionStatus).
+    #[test]
+    fn pos_transaction_list_table_renders_get_shape() {
+        let item = json!({
+            "id": "g-1",
+            "posTransactionStatus": "Completed",
+            "isCompleted": true
+        });
+        let table = pos_transaction_list_table(&[item]);
+        assert!(
+            table.contains("g-1"),
+            "list table must contain id; got: {table}"
+        );
+        assert!(
+            table.contains("Completed"),
+            "list table must contain posTransactionStatus; got: {table}"
+        );
+    }
+
+    /// render_pos_transaction quiet mode must output posTransactionId for create shape.
+    #[test]
+    fn render_pos_transaction_quiet_create_shape() {
+        use crate::cli::output::OutputFormat;
+        // Capture stdout by exercising pos_id directly (render_pos_transaction
+        // calls println! so we test the helper which drives it).
+        let v = json!({ "posTransactionId": "p-1", "status": "TerminalConnecting", "statusId": 1 });
+        assert_eq!(
+            pos_id(&v),
+            Some("p-1"),
+            "quiet mode uses pos_id; create shape must return posTransactionId"
+        );
+        // Ensure OutputFormat::Quiet would print it (compile-time coverage).
+        let _ = OutputFormat::Quiet;
+    }
+
+    /// render_pos_transaction quiet mode must output id for get shape.
+    #[test]
+    fn render_pos_transaction_quiet_get_shape() {
+        let v = json!({ "id": "g-1", "posTransactionStatus": "Completed", "isCompleted": true });
+        assert_eq!(
+            pos_id(&v),
+            Some("g-1"),
+            "quiet mode uses pos_id; get shape must return id"
+        );
     }
 
     // ── run_wait_poll — async tests using tokio time control ──────────────────

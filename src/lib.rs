@@ -163,8 +163,8 @@ async fn dispatch_pos(
 ) -> anyhow::Result<()> {
     use cli::PosCommand;
     use cli::pos::{
-        PollOutcome, PosCreateArgs, build_pos_create_body, render_pos_transaction,
-        render_pos_transaction_list, run_wait_poll,
+        PollOutcome, PosCreateArgs, build_pos_create_body, pos_id, pos_status,
+        render_pos_transaction, render_pos_transaction_list, run_wait_poll,
     };
 
     match pc {
@@ -208,10 +208,9 @@ async fn dispatch_pos(
             }
 
             // Extract the POS transaction id to use for polling.
-            let pos_id = created
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("create response missing 'id' field"))?
+            // create/cancel responses use `posTransactionId`; get/list use `id`.
+            let pos_txn_id = pos_id(&created)
+                .ok_or_else(|| anyhow::anyhow!("create response missing id (id/posTransactionId)"))?
                 .to_string();
 
             // Clone the api for the closure (ApiClient is Clone).
@@ -225,7 +224,7 @@ async fn dispatch_pos(
                 }
             };
 
-            let outcome = run_wait_poll(&pos_id, wait_timeout, getter).await?;
+            let outcome = run_wait_poll(&pos_txn_id, wait_timeout, getter).await?;
 
             match outcome {
                 PollOutcome::Completed(v) => {
@@ -244,13 +243,10 @@ async fn dispatch_pos(
                     // (conventional SIGINT exit code) so scripts can distinguish
                     // an interrupted poll from a completed one.
                     if v.is_null() {
-                        eprintln!("Interrupted before first poll. Transaction id: {pos_id}");
+                        eprintln!("Interrupted before first poll. Transaction id: {pos_txn_id}");
                     } else {
-                        let status = v
-                            .get("posTransactionStatus")
-                            .and_then(|x| x.as_str())
-                            .unwrap_or("unknown");
-                        eprintln!("Interrupted. Last known status: {status} (id: {pos_id})");
+                        let status = pos_status(&v).unwrap_or("unknown");
+                        eprintln!("Interrupted. Last known status: {status} (id: {pos_txn_id})");
                     }
                     std::process::exit(130);
                 }

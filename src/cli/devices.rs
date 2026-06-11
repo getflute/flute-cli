@@ -4,13 +4,11 @@
 //! All body builders and render helpers are **pure functions** — no I/O, no
 //! network — so they are trivially unit-testable with golden assertions.
 //!
-//! ## DeviceResponseDto field names (inferred defensively)
-//! The OpenAPI spec names the container `DeviceResponseDto` but does not list
-//! all fields in the reference doc.  Based on the wire-format doc and common
-//! API conventions we render: `id`, `deviceId`, `deviceName`, `status`.
-//! Additional fields are surfaced as-is in JSON output via the Envelope.
-//! Field names were **inferred defensively** — live testing may reveal extra
-//! fields; add them to the table helpers as discovered.
+//! ## DeviceResponseDto field names (confirmed live)
+//! Live device records use: `deviceId`, `deviceName`, `tapToPayStatus`,
+//! `tapToPayEnabled`, `tapToPayStatusId`, `apiKeyName`, `lastLoginAt`,
+//! `userProfiles`.  There is no top-level `id` or `status` field on the
+//! wire — `deviceId` is the authoritative identifier.
 
 use serde_json::{Map, Value, json};
 
@@ -51,33 +49,47 @@ pub fn build_ttp_jwt_body(device_id: &str) -> Value {
 /// Build the table string for a device list (pure helper, golden-testable).
 ///
 /// The response is `{devices: [...]}` — reads the `devices` array defensively.
-/// Columns: ID (36), DEVICE ID (32), NAME (24), STATUS (16)
-///
-/// Field names are inferred defensively from `DeviceResponseDto`; live testing
-/// may surface additional fields — extend this helper as needed.
+/// Columns (confirmed live field names):
+///   DEVICE ID (36), NAME (28), TAP-TO-PAY (16), ENABLED (8), API KEY (32)
 pub(crate) fn device_list_table(items: &[Value]) -> String {
     let header = format!(
-        "{:<36}  {:<32}  {:<24}  {:<16}",
-        "ID", "DEVICE ID", "NAME", "STATUS"
+        "{:<36}  {:<28}  {:<16}  {:<8}  {:<32}",
+        "DEVICE ID", "NAME", "TAP-TO-PAY", "ENABLED", "API KEY"
     );
-    let separator = "-".repeat(36 + 2 + 32 + 2 + 24 + 2 + 16);
+    let separator = "-".repeat(36 + 2 + 28 + 2 + 16 + 2 + 8 + 2 + 32);
     let mut rows = vec![header, separator];
 
     for item in items {
-        let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("—");
-        let device_id = item.get("deviceId").and_then(|v| v.as_str()).unwrap_or("—");
+        let device_id = item
+            .get("deviceId")
+            .or_else(|| item.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("—");
         let name = item
             .get("deviceName")
             .and_then(|v| v.as_str())
             .unwrap_or("—");
-        let status = item.get("status").and_then(|v| v.as_str()).unwrap_or("—");
+        let ttp_status = item
+            .get("tapToPayStatus")
+            .and_then(|v| v.as_str())
+            .unwrap_or("—");
+        let enabled = item
+            .get("tapToPayEnabled")
+            .and_then(|v| v.as_bool())
+            .map(|b| if b { "true" } else { "false" })
+            .unwrap_or("—");
+        let api_key = item
+            .get("apiKeyName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("—");
 
         rows.push(format!(
-            "{}  {}  {}  {}",
-            fit(id, 36),
-            fit(device_id, 32),
-            fit(name, 24),
-            fit(status, 16),
+            "{}  {}  {}  {}  {}",
+            fit(device_id, 36),
+            fit(name, 28),
+            fit(ttp_status, 16),
+            fit(enabled, 8),
+            fit(api_key, 32),
         ));
     }
 
@@ -85,14 +97,29 @@ pub(crate) fn device_list_table(items: &[Value]) -> String {
 }
 
 /// Build the table string for a single device (pure helper, golden-testable).
+///
+/// Uses confirmed live field names: `deviceId`, `deviceName`, `tapToPayStatus`,
+/// `tapToPayEnabled`, `apiKeyName`, `lastLoginAt`.
 pub(crate) fn device_table(v: &Value) -> String {
-    let get = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("—");
+    let get_str = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("—");
+    let device_id = v
+        .get("deviceId")
+        .or_else(|| v.get("id"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("—");
+    let enabled = v
+        .get("tapToPayEnabled")
+        .and_then(|x| x.as_bool())
+        .map(|b| if b { "true" } else { "false" })
+        .unwrap_or("—");
     format!(
-        "id:         {}\ndeviceId:   {}\ndeviceName: {}\nstatus:     {}",
-        get("id"),
-        get("deviceId"),
-        get("deviceName"),
-        get("status"),
+        "deviceId:       {}\ndeviceName:     {}\ntapToPayStatus: {}\ntapToPayEnabled:{}\napiKeyName:     {}\nlastLoginAt:    {}",
+        device_id,
+        get_str("deviceName"),
+        get_str("tapToPayStatus"),
+        enabled,
+        get_str("apiKeyName"),
+        get_str("lastLoginAt"),
     )
 }
 
@@ -113,7 +140,7 @@ fn extract_devices(v: &Value) -> Vec<Value> {
 ///
 /// - `json`  → `Envelope { object: "device_list", data: v, … }`
 /// - `table` → columnar table via [`device_list_table`]
-/// - `quiet` → one ID per line (uses `id` field; falls back to `deviceId`)
+/// - `quiet` → one deviceId per line (falls back to `id` if `deviceId` absent)
 pub fn render_device_list(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     let items = extract_devices(v);
 
@@ -128,8 +155,8 @@ pub fn render_device_list(v: &Value, fmt: OutputFormat, environment: &str) -> an
         OutputFormat::Quiet => {
             for item in &items {
                 let id = item
-                    .get("id")
-                    .or_else(|| item.get("deviceId"))
+                    .get("deviceId")
+                    .or_else(|| item.get("id"))
                     .and_then(|x| x.as_str())
                     .unwrap_or("—");
                 println!("{id}");
@@ -143,7 +170,7 @@ pub fn render_device_list(v: &Value, fmt: OutputFormat, environment: &str) -> an
 ///
 /// - `json`  → `Envelope { object: "device", data: v, … }`
 /// - `table` → key-value list via [`device_table`]
-/// - `quiet` → just the `id` (or `deviceId` as fallback)
+/// - `quiet` → just the `deviceId` (falls back to `id` if absent)
 pub fn render_device(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     match fmt {
         OutputFormat::Json => {
@@ -155,8 +182,8 @@ pub fn render_device(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow:
         }
         OutputFormat::Quiet => {
             let id = v
-                .get("id")
-                .or_else(|| v.get("deviceId"))
+                .get("deviceId")
+                .or_else(|| v.get("id"))
                 .and_then(|x| x.as_str())
                 .unwrap_or("—");
             println!("{id}");
@@ -252,65 +279,92 @@ mod tests {
 
     // ── device_list_table ─────────────────────────────────────────────────────
 
+    /// Realistic sample matching live wire format (no `id`, no `status`).
+    fn sample_device() -> serde_json::Value {
+        json!({
+            "deviceId": "d-1",
+            "deviceName": "iPhone16,2",
+            "tapToPayStatus": "Active",
+            "tapToPayEnabled": true,
+            "apiKeyName": "ARISE Mobile App"
+        })
+    }
+
     #[test]
     fn device_list_table_renders_header_and_rows() {
-        let items = vec![json!({
-            "id": "dev-001",
-            "deviceId": "DEVICE-ABC-123",
-            "deviceName": "Register 1",
-            "status": "Active"
-        })];
+        let items = vec![sample_device()];
         let table = device_list_table(&items);
-        assert!(table.contains("ID"), "must contain ID header");
         assert!(table.contains("DEVICE ID"), "must contain DEVICE ID header");
         assert!(table.contains("NAME"), "must contain NAME header");
-        assert!(table.contains("STATUS"), "must contain STATUS header");
-        assert!(table.contains("dev-001"), "must contain item id");
-        assert!(table.contains("DEVICE-ABC-123"), "must contain deviceId");
-        assert!(table.contains("Register 1"), "must contain deviceName");
-        assert!(table.contains("Active"), "must contain status");
+        assert!(
+            table.contains("TAP-TO-PAY"),
+            "must contain TAP-TO-PAY header"
+        );
+        assert!(table.contains("ENABLED"), "must contain ENABLED header");
+        assert!(table.contains("API KEY"), "must contain API KEY header");
+        assert!(table.contains("d-1"), "must contain deviceId");
+        assert!(table.contains("iPhone16,2"), "must contain deviceName");
+        assert!(table.contains("Active"), "must contain tapToPayStatus");
+        assert!(table.contains("true"), "must contain tapToPayEnabled");
+        assert!(
+            table.contains("ARISE Mobile App"),
+            "must contain apiKeyName"
+        );
     }
 
     #[test]
     fn device_list_table_empty_returns_header_only() {
         let table = device_list_table(&[]);
-        assert!(table.contains("ID"));
         assert!(table.contains("DEVICE ID"));
+        assert!(table.contains("TAP-TO-PAY"));
         let lines: Vec<&str> = table.lines().collect();
         assert_eq!(lines.len(), 2); // header + separator
     }
 
     #[test]
     fn device_list_table_missing_fields_show_dash() {
-        let items = vec![json!({ "id": "dev-002" })];
+        let items = vec![json!({ "deviceId": "d-002" })];
         let table = device_list_table(&items);
-        assert!(table.contains("dev-002"));
+        assert!(table.contains("d-002"));
         assert!(table.contains('—'));
+    }
+
+    #[test]
+    fn device_list_table_falls_back_to_id_when_no_device_id() {
+        let items = vec![json!({ "id": "fallback-id" })];
+        let table = device_list_table(&items);
+        assert!(table.contains("fallback-id"));
     }
 
     // ── device_table ──────────────────────────────────────────────────────────
 
     #[test]
-    fn device_table_shows_all_fields() {
-        let v = json!({
-            "id": "dev-001",
-            "deviceId": "DEVICE-ABC-123",
-            "deviceName": "Register 1",
-            "status": "Active"
-        });
+    fn device_table_shows_all_live_fields() {
+        let v = sample_device();
         let table = device_table(&v);
-        assert!(table.contains("dev-001"));
-        assert!(table.contains("DEVICE-ABC-123"));
-        assert!(table.contains("Register 1"));
-        assert!(table.contains("Active"));
+        assert!(table.contains("d-1"), "must contain deviceId");
+        assert!(table.contains("iPhone16,2"), "must contain deviceName");
+        assert!(table.contains("Active"), "must contain tapToPayStatus");
+        assert!(table.contains("true"), "must contain tapToPayEnabled");
+        assert!(
+            table.contains("ARISE Mobile App"),
+            "must contain apiKeyName"
+        );
     }
 
     #[test]
     fn device_table_missing_fields_show_dash() {
-        let v = json!({ "id": "dev-999" });
+        let v = json!({ "deviceId": "d-999" });
         let table = device_table(&v);
-        assert!(table.contains("dev-999"));
+        assert!(table.contains("d-999"));
         assert!(table.contains('—'));
+    }
+
+    #[test]
+    fn device_table_falls_back_to_id_when_no_device_id() {
+        let v = json!({ "id": "fallback-id", "deviceName": "Test" });
+        let table = device_table(&v);
+        assert!(table.contains("fallback-id"));
     }
 
     // ── ttp_jwt_table ─────────────────────────────────────────────────────────

@@ -156,6 +156,108 @@ fn parse_txn_money(
     })
 }
 
+async fn dispatch_settlements(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    sc: cli::SettlementsCommand,
+) -> anyhow::Result<()> {
+    use cli::SettlementsCommand;
+    use cli::settlements::{render_settlement, render_settlement_list};
+
+    match sc {
+        SettlementsCommand::List {
+            limit,
+            page,
+            from,
+            to,
+            status,
+        } => {
+            // Map --status flag to statusId integer.
+            let status_id = match status.as_deref() {
+                Some("open") => Some(1u32),
+                Some("settled") => Some(2u32),
+                Some(other) => {
+                    anyhow::bail!("unknown status '{other}'; valid values: open, settled");
+                }
+                None => None,
+            };
+            let (p, api) = build_client(profile)?;
+            let result = api
+                .list_settlement_batches(
+                    page,
+                    Some(limit),
+                    from.as_deref(),
+                    to.as_deref(),
+                    status_id,
+                )
+                .await?;
+            render_settlement_list(&result, output_fmt, &p.name)
+        }
+        SettlementsCommand::Get { id } => {
+            // No single-batch endpoint: fetch a large page and filter client-side.
+            let (p, api) = build_client(profile)?;
+            let result = api
+                .list_settlement_batches(None, Some(100), None, None, None)
+                .await?;
+            let items = result
+                .get("items")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let found = items.into_iter().find(|item| {
+                item.get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s == id)
+                    .unwrap_or(false)
+            });
+            match found {
+                Some(batch) => render_settlement(&batch, output_fmt, &p.name),
+                None => anyhow::bail!(
+                    "settlement batch {id} not found in current page (no single-batch endpoint)"
+                ),
+            }
+        }
+    }
+}
+
+async fn dispatch_tokens(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    tc: cli::TokensCommand,
+) -> anyhow::Result<()> {
+    use cli::TokensCommand;
+    use cli::tokens::{build_token_body, render_token_create, render_token_list};
+
+    match tc {
+        TokensCommand::Create { merchant_id, name } => {
+            let body = build_token_body(&merchant_id, &name);
+            let (p, api) = build_client(profile)?;
+            let result = api.create_token(body).await?;
+            render_token_create(&result, output_fmt, &p.name)
+        }
+        TokensCommand::List { merchant_id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.list_tokens(merchant_id.as_deref()).await?;
+            render_token_list(&result, output_fmt, &p.name)
+        }
+        TokensCommand::Revoke { client_id, yes } => {
+            if !yes {
+                anyhow::bail!(
+                    "revocation requires --yes to confirm (e.g. `tokens revoke --client-id {client_id} --yes`)"
+                );
+            }
+            let (_p, api) = build_client(profile)?;
+            treat_404_as_ok(api.revoke_token(&client_id).await)?;
+            match output_fmt {
+                cli::OutputFormat::Json => {} // empty stdout, exit 0
+                cli::OutputFormat::Table => println!("Revoked token {client_id}."),
+                cli::OutputFormat::Quiet => println!("{client_id}"),
+            }
+            Ok(())
+        }
+    }
+}
+
 async fn dispatch_pos(
     profile: &str,
     output_fmt: cli::OutputFormat,
@@ -865,6 +967,8 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Terminals(tc) => dispatch_terminals(&profile, output_fmt, *tc).await,
             cli::Command::Devices(dc) => dispatch_devices(&profile, output_fmt, *dc).await,
             cli::Command::Pos(pc) => dispatch_pos(&profile, output_fmt, *pc).await,
+            cli::Command::Settlements(sc) => dispatch_settlements(&profile, output_fmt, *sc).await,
+            cli::Command::Tokens(tc) => dispatch_tokens(&profile, output_fmt, *tc).await,
         };
 
         // On failure: always call process::exit with the semantic exit code.

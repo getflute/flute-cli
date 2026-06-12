@@ -9,7 +9,9 @@ pub mod devices;
 pub mod money;
 pub mod output;
 pub mod pos;
+pub mod settlements;
 pub mod terminals;
+pub mod tokens;
 pub mod transactions;
 pub mod util;
 
@@ -67,6 +69,12 @@ pub enum Command {
     /// POS transaction operations (create [--wait], get, list, cancel).
     #[command(subcommand)]
     Pos(Box<PosCommand>),
+    /// Settlement batch operations (list, get).
+    #[command(subcommand)]
+    Settlements(Box<SettlementsCommand>),
+    /// ISV API token operations (create, list, revoke).
+    #[command(subcommand)]
+    Tokens(Box<TokensCommand>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -860,6 +868,81 @@ pub enum PosCommand {
     Cancel {
         /// POS transaction UUID to cancel (positional).
         id: String,
+    },
+}
+
+/// Settlements subcommands — Phase 4 Task 4.1.
+#[derive(Subcommand, Debug)]
+pub enum SettlementsCommand {
+    /// List settlement batches (GET /pay-api/v1/settlements/batches).
+    List {
+        /// Maximum results per page (default 25). Maps to `pageSize` on the API.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+
+        /// Page number to fetch (1-based). Maps to `page` on the API.
+        #[arg(long)]
+        page: Option<u32>,
+
+        /// Filter from this date inclusive (YYYY-MM-DD). Maps to `dateFrom`.
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Filter up to this date inclusive (YYYY-MM-DD). Maps to `dateTo`.
+        #[arg(long)]
+        to: Option<String>,
+
+        /// Filter by status: `open` (statusId=1) or `settled` (statusId=2).
+        #[arg(long)]
+        status: Option<String>,
+    },
+
+    /// Fetch a single settlement batch by ID.
+    ///
+    /// **Note**: There is no single-batch endpoint. This fetches a page of up to
+    /// 100 batches and filters client-side by `id`. Results are page-bounded.
+    Get {
+        /// Settlement batch ID (positional).
+        id: String,
+    },
+}
+
+/// ISV Tokens subcommands — Phase 4 Task 4.1.
+#[derive(Subcommand, Debug)]
+pub enum TokensCommand {
+    /// Create an ISV API token (POST /pay-api/v1/merchants/tokens).
+    ///
+    /// The response contains `clientSecret` which is shown **only once**.
+    /// Store it securely immediately after creation.
+    Create {
+        /// Merchant UUID (required). Maps to `merchantId` in the request body.
+        #[arg(long, required = true)]
+        merchant_id: String,
+
+        /// Token display name (required). Maps to `tokenName` in the request body.
+        #[arg(long, required = true)]
+        name: String,
+    },
+
+    /// List ISV API tokens (GET /pay-api/v1/merchants/tokens).
+    List {
+        /// Filter by merchant UUID. Maps to `merchantId` query param (optional).
+        #[arg(long)]
+        merchant_id: Option<String>,
+    },
+
+    /// Revoke an ISV API token (DELETE /pay-api/v1/merchants/tokens/{clientId}).
+    ///
+    /// Requires `--yes` to prevent accidental revocation.
+    /// 404 is treated as idempotent success (already revoked).
+    Revoke {
+        /// Client ID of the token to revoke (required).
+        #[arg(long, required = true)]
+        client_id: String,
+
+        /// Confirm the revocation (required).
+        #[arg(long)]
+        yes: bool,
     },
 }
 

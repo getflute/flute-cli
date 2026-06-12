@@ -5,7 +5,9 @@ mod ach;
 mod customers;
 mod devices;
 mod pos;
+mod settlements;
 mod terminals;
+mod tokens;
 mod transactions;
 
 use crate::api::error::{ApiError, from_aspnet};

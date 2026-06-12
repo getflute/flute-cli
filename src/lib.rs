@@ -156,6 +156,88 @@ fn parse_txn_money(
     })
 }
 
+async fn dispatch_subscriptions(
+    profile: &str,
+    output_fmt: cli::OutputFormat,
+    sc: cli::SubscriptionsCommand,
+) -> anyhow::Result<()> {
+    use cli::SubscriptionsCommand;
+    use cli::subscriptions::{
+        CreateArgs, build_subscription_body, render_subscription, render_subscription_list,
+        render_subscription_payments,
+    };
+
+    match sc {
+        SubscriptionsCommand::Create {
+            customer_id,
+            payment_method_id,
+            amount,
+            currency_id,
+            number_of_payments,
+            payment_frequency,
+            interval,
+            transaction_type,
+            requester_ip,
+            payment_processor_id,
+            start_date,
+            sec_code,
+            faster,
+        } => {
+            let args = CreateArgs {
+                customer_id,
+                payment_method_id,
+                amount,
+                currency_id,
+                number_of_payments,
+                payment_frequency,
+                interval,
+                transaction_type,
+                requester_ip,
+                payment_processor_id,
+                start_date,
+                sec_code,
+                faster,
+            };
+            let body = build_subscription_body(&args);
+            let (p, api) = build_client(profile)?;
+            let result = api.create_subscription(body).await?;
+            render_subscription(&result, output_fmt, &p.name)
+        }
+        SubscriptionsCommand::Get { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.get_subscription(&id).await?;
+            render_subscription(&result, output_fmt, &p.name)
+        }
+        SubscriptionsCommand::List {
+            limit,
+            page,
+            search,
+            customer_id,
+        } => {
+            let (p, api) = build_client(profile)?;
+            let result = api
+                .list_subscriptions(page, Some(limit), search.as_deref(), customer_id.as_deref())
+                .await?;
+            render_subscription_list(&result, output_fmt, &p.name)
+        }
+        SubscriptionsCommand::Payments { id } => {
+            let (p, api) = build_client(profile)?;
+            let result = api.subscription_payments(&id).await?;
+            render_subscription_payments(&result, output_fmt, &p.name)
+        }
+        SubscriptionsCommand::Terminate { id, yes } => {
+            if !yes {
+                anyhow::bail!(
+                    "termination requires --yes to confirm (e.g. `subscriptions terminate {id} --yes`)"
+                );
+            }
+            let (p, api) = build_client(profile)?;
+            let result = api.terminate_subscription(&id).await?;
+            render_subscription(&result, output_fmt, &p.name)
+        }
+    }
+}
+
 async fn dispatch_settlements(
     profile: &str,
     output_fmt: cli::OutputFormat,
@@ -969,6 +1051,9 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Pos(pc) => dispatch_pos(&profile, output_fmt, *pc).await,
             cli::Command::Settlements(sc) => dispatch_settlements(&profile, output_fmt, *sc).await,
             cli::Command::Tokens(tc) => dispatch_tokens(&profile, output_fmt, *tc).await,
+            cli::Command::Subscriptions(sc) => {
+                dispatch_subscriptions(&profile, output_fmt, *sc).await
+            }
         };
 
         // On failure: always call process::exit with the semantic exit code.

@@ -6,6 +6,7 @@ mod customers;
 mod devices;
 mod pos;
 mod settlements;
+mod subscriptions;
 mod terminals;
 mod tokens;
 mod transactions;

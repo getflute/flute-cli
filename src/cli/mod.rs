@@ -10,6 +10,7 @@ pub mod money;
 pub mod output;
 pub mod pos;
 pub mod settlements;
+pub mod subscriptions;
 pub mod terminals;
 pub mod tokens;
 pub mod transactions;
@@ -75,6 +76,9 @@ pub enum Command {
     /// ISV API token operations (create, list, revoke).
     #[command(subcommand)]
     Tokens(Box<TokensCommand>),
+    /// Subscription operations (create, get, list, payments, terminate).
+    #[command(subcommand)]
+    Subscriptions(Box<SubscriptionsCommand>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -941,6 +945,112 @@ pub enum TokensCommand {
         client_id: String,
 
         /// Confirm the revocation (required).
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+/// Subscriptions subcommands — Phase 4 Task 4.2.
+#[derive(Subcommand, Debug)]
+pub enum SubscriptionsCommand {
+    /// Create a new subscription (POST /sub-api/v1/subscriptions).
+    Create {
+        /// Customer UUID (required). Maps to `customerId`.
+        #[arg(long, required = true)]
+        customer_id: String,
+
+        /// Payment method UUID for the subscription (required). Maps to `paymentMethodId`.
+        /// Must be a vaulted and active payment method.
+        #[arg(long, required = true)]
+        payment_method_id: String,
+
+        /// Subscription charge amount (required). Plain decimal, e.g. `49.99`.
+        #[arg(long, required = true)]
+        amount: String,
+
+        /// Currency ID (default 1 = USD). Maps to `currencyId`.
+        #[arg(long, default_value_t = 1)]
+        currency_id: i32,
+
+        /// Total number of scheduled payments (required). Maps to `numberOfPayments`.
+        #[arg(long, required = true)]
+        number_of_payments: u32,
+
+        /// Payment frequency (default 1 = every 1 unit). Maps to `paymentFrequency`.
+        #[arg(long, default_value_t = 1)]
+        payment_frequency: u32,
+
+        /// Payment interval: `day`, `week`, or `month` (default `month`).
+        /// Maps to `paymentFrequencyUnit` (1=Day, 2=Week, 3=Month).
+        #[arg(long, value_enum, default_value = "month")]
+        interval: subscriptions::Interval,
+
+        /// Transaction type (default 2 = Sale). Maps to `transactionType`.
+        /// 1=Authorization, 2=Sale, 11=AchDebit.
+        #[arg(long, default_value_t = 2)]
+        transaction_type: i32,
+
+        /// End-customer IP address (default `127.0.0.1`). Maps to `requesterIpAddress`.
+        #[arg(long, default_value = "127.0.0.1")]
+        requester_ip: String,
+
+        /// Payment processor UUID. Optional. Maps to `paymentProcessorId`.
+        #[arg(long)]
+        payment_processor_id: Option<String>,
+
+        /// Subscription start date-time (ISO 8601). Omit for immediate/PayNow.
+        /// Maps to `paymentStartDateTime`.
+        #[arg(long)]
+        start_date: Option<String>,
+
+        /// ACH SEC code integer (for ACH subscriptions only). Maps to `secCode`.
+        #[arg(long)]
+        sec_code: Option<i32>,
+
+        /// Enable faster processing (ACH subscriptions only). Maps to `isFasterProcessing`.
+        #[arg(long)]
+        faster: bool,
+    },
+
+    /// Fetch a single subscription by ID (GET /sub-api/v1/subscriptions/{id}).
+    Get {
+        /// Subscription UUID (positional).
+        id: String,
+    },
+
+    /// List subscriptions (GET /sub-api/v1/subscriptions).
+    List {
+        /// Maximum results per page (default 25). Maps to `pageSize` on the API.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+
+        /// Page number to fetch (1-based). Maps to `page` on the API.
+        #[arg(long)]
+        page: Option<u32>,
+
+        /// Server-side text search. Maps to `search` on the API.
+        #[arg(long)]
+        search: Option<String>,
+
+        /// Filter by customer UUID. Maps to `customerIds` on the API.
+        #[arg(long)]
+        customer_id: Option<String>,
+    },
+
+    /// List payments for a subscription (GET /sub-api/v1/subscriptions/{id}/payments).
+    Payments {
+        /// Subscription UUID (positional).
+        id: String,
+    },
+
+    /// Terminate a subscription (PUT /sub-api/v1/subscriptions/{id}/terminate).
+    ///
+    /// Requires `--yes` to prevent accidental termination.
+    Terminate {
+        /// Subscription UUID (positional).
+        id: String,
+
+        /// Confirm the termination (required).
         #[arg(long)]
         yes: bool,
     },

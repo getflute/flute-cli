@@ -4,8 +4,11 @@ pub mod api;
 pub mod auth;
 pub mod cli;
 pub mod config;
+pub mod update;
+pub mod update_check;
 
 use clap::{CommandFactory, Parser};
+use std::io::IsTerminal;
 
 /// Pure helper: build the production warning banner string.
 ///
@@ -1028,12 +1031,29 @@ pub fn run() -> anyhow::Result<()> {
 
     init_tracing(debug);
 
+    // `completion` is offline: run it synchronously before the Tokio runtime
+    // so it never needs credentials and produces no async overhead.
+    if let cli::Command::Completion { shell } = cmd {
+        clap_complete::generate(
+            shell,
+            &mut cli::Cli::command(),
+            "flute",
+            &mut std::io::stdout(),
+        );
+        return Ok(());
+    }
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
 
     runtime.block_on(async move {
+        let should_check = should_run_update_check(&cmd, output_fmt);
+
         let dispatch_result = match cmd {
+            // `Completion` handled above, before runtime creation.
+            cli::Command::Completion { .. } => unreachable!(),
+            cli::Command::Update => update::run().await,
             cli::Command::Auth(cli::AuthCommand::Login) => cli::auth::login(&profile).await,
             cli::Command::Auth(cli::AuthCommand::Status) => {
                 cli::auth::status(&profile, output_fmt).await
@@ -1060,6 +1080,15 @@ pub fn run() -> anyhow::Result<()> {
             }
         };
 
+        // Post-dispatch update notice: best-effort, never fails the command.
+        // Runs only when all opt-out gates pass and the command itself succeeded.
+        if should_check
+            && dispatch_result.is_ok()
+            && let Some(version) = update_check::check_for_update().await
+        {
+            eprintln!("\n{}", update_check::notice_for(&version));
+        }
+
         // On failure: always call process::exit with the semantic exit code.
         // Under --output json: additionally print the structured error envelope
         // to stdout so the agent's stdout stream stays pure JSON.
@@ -1078,6 +1107,31 @@ pub fn run() -> anyhow::Result<()> {
 
         dispatch_result
     })
+}
+
+/// Apply all the opt-out gates for the startup update check.
+///
+/// The post-dispatch fetch uses this predicate so the rules stay in one place:
+/// * Skip for `update` and `auth` (tight single-purpose tasks; banner adds noise).
+/// * Skip for `completion` (offline, no TTY implied).
+/// * Skip when stderr isn't a TTY (piped output, CI logs).
+/// * Skip when `--output json` is set (keeps stdout clean for machine consumers).
+/// * Respect the config-file and env-var opt-outs via `update_check::opt_out`.
+fn should_run_update_check(cmd: &cli::Command, output_fmt: cli::OutputFormat) -> bool {
+    if matches!(
+        cmd,
+        cli::Command::Update | cli::Command::Auth(_) | cli::Command::Completion { .. }
+    ) {
+        return false;
+    }
+    if !std::io::stderr().is_terminal() {
+        return false;
+    }
+    if output_fmt == cli::OutputFormat::Json {
+        return false;
+    }
+    let cfg = config::load_or_default();
+    !update_check::opt_out(&cfg)
 }
 
 #[cfg(test)]

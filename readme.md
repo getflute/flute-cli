@@ -6,18 +6,18 @@
 
 ## Install
 
-> **Note:** Distribution packages are pending the first public release. The coordinates below are correct but the tap and install script will not resolve until release v0.1.0 is tagged.
+> **Note:** Distribution packages are pending the first public release. The coordinates below are correct but the tap and install script will not resolve until release v0.1.1 is tagged.
 
 **Homebrew (macOS / Linux)**
 
 ```sh
-brew install getflute/flute-cli/flute-cli
+brew install getflute/flute-cli/flute
 ```
 
 **Shell script (maps to GitHub Releases)**
 
 ```sh
-curl -fsSL https://cli.flute.dev/install.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/getflute/flute-cli/releases/latest/download/flute-installer.sh | sh
 ```
 
 **From source**

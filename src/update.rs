@@ -81,7 +81,7 @@ pub async fn run() -> Result<()> {
                      cargo-dist installer, so `update` cannot replace it in place.\n\
                      Reinstall using one of:\n  \
                      curl -LsSf https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/latest/download/flute-installer.sh | sh\n  \
-                     brew install {REPO_OWNER}/tap/flute\n  \
+                     brew install {REPO_OWNER}/{REPO_NAME}/flute\n  \
                      irm https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/latest/download/flute-installer.ps1 | iex",
                 );
             }

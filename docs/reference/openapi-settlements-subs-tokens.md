@@ -65,7 +65,7 @@
 |---|---|---|
 | `tokens create` | POST `/pay-api/v1/merchants/tokens` | CreateMerchantApiTokenRequestDto → CreateMerchantApiTokenResponseDto |
 | `tokens list` | GET `/pay-api/v1/merchants/tokens?merchantId=` | GetMerchantApiTokensResponseDto `{tokens:[…]}` |
-| `tokens revoke` | DELETE `/pay-api/v1/merchants/tokens/{clientId}` | **bodyless** |
+| `tokens revoke` | DELETE `/pay-api/v1/merchants/tokens/{clientId}?merchantId=` (**required** query param) | **bodyless** |
 
 - create body CreateMerchantApiTokenRequestDto: **required `merchantId`, `tokenName`** —
   `tokens create --merchant-id <uuid> --name "<display name>"`.
@@ -74,7 +74,7 @@
   one-shot (like the webhook signing secret).
 - list: `tokens list [--merchant-id <uuid>]` → query `merchantId`; response `{tokens:[{clientId,
   tokenName, merchantId, creationDate}]}`. Table cols: CLIENT ID, NAME, MERCHANT, CREATED. quiet → clientId.
-- revoke: `tokens revoke --client-id <uuid>` (require `--yes`; bodyless DELETE; 404-idempotent).
+- revoke: `tokens revoke --client-id <uuid> --merchant-id <uuid> --yes` (both flags required; `merchantId` is a **required** query param — API returns 400 without it; bodyless DELETE; 404-idempotent).
 
 ## Rendering
 - Add pure render helpers per the established pattern: settlement list/get (table cols: ID, PROCESSOR,

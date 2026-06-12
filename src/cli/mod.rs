@@ -935,14 +935,19 @@ pub enum TokensCommand {
         merchant_id: Option<String>,
     },
 
-    /// Revoke an ISV API token (DELETE /pay-api/v1/merchants/tokens/{clientId}).
+    /// Revoke an ISV API token (DELETE /pay-api/v1/merchants/tokens/{clientId}?merchantId=).
     ///
+    /// Both `--client-id` and `--merchant-id` are required by the API.
     /// Requires `--yes` to prevent accidental revocation.
     /// 404 is treated as idempotent success (already revoked).
     Revoke {
         /// Client ID of the token to revoke (required).
         #[arg(long, required = true)]
         client_id: String,
+
+        /// Merchant UUID that owns the token (required). The API returns 400 without it.
+        #[arg(long, required = true)]
+        merchant_id: String,
 
         /// Confirm the revocation (required).
         #[arg(long)]

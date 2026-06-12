@@ -50,14 +50,18 @@ fn tokens_list_help_exits_zero_and_mentions_merchant_id() {
 
 // ── tokens revoke --help ──────────────────────────────────────────────────────
 
-/// `flute tokens revoke --help` exits 0 and documents --client-id and --yes.
+/// `flute tokens revoke --help` exits 0 and documents --client-id, --merchant-id and --yes.
 #[test]
-fn tokens_revoke_help_exits_zero_and_mentions_client_id_and_yes() {
+fn tokens_revoke_help_exits_zero_and_mentions_client_id_merchant_id_and_yes() {
     flute()
         .args(["tokens", "revoke", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("--client-id").and(predicate::str::contains("--yes")));
+        .stdout(
+            predicate::str::contains("--client-id")
+                .and(predicate::str::contains("--merchant-id"))
+                .and(predicate::str::contains("--yes")),
+        );
 }
 
 // ── Required-argument enforcement (Clap, no network) ─────────────────────────
@@ -86,9 +90,24 @@ fn tokens_revoke_without_client_id_fails() {
     flute().args(["tokens", "revoke"]).assert().failure();
 }
 
+/// `flute tokens revoke --client-id <dummy>` without `--merchant-id` must exit
+/// non-zero (--merchant-id is required by Clap).
+#[test]
+fn tokens_revoke_without_merchant_id_fails() {
+    flute()
+        .args([
+            "tokens",
+            "revoke",
+            "--client-id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+}
+
 // ── Runtime --yes guard (fires before build_client, no network) ───────────────
 
-/// `flute tokens revoke --client-id <dummy>` WITHOUT `--yes` must exit
+/// `flute tokens revoke --client-id <dummy> --merchant-id <dummy>` WITHOUT `--yes` must exit
 /// non-zero and mention `--yes` in stderr.
 ///
 /// The `--yes` guard fires **before** `build_client` in the dispatch path, so
@@ -101,6 +120,8 @@ fn tokens_revoke_without_yes_fails_and_mentions_yes_flag() {
             "revoke",
             "--client-id",
             "00000000-0000-0000-0000-000000000000",
+            "--merchant-id",
+            "11111111-0000-0000-0000-000000000000",
         ])
         .assert()
         .failure()

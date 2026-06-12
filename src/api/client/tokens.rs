@@ -42,9 +42,14 @@ impl ApiClient {
         self.send(Method::GET, &path, None).await
     }
 
-    /// DELETE `/pay-api/v1/merchants/tokens/{clientId}` — revoke an ISV token (bodyless).
-    pub async fn revoke_token(&self, client_id: &str) -> Result<(), ApiError> {
-        let path = format!("/pay-api/v1/merchants/tokens/{client_id}");
+    /// DELETE `/pay-api/v1/merchants/tokens/{clientId}?merchantId=<id>` — revoke an ISV token (bodyless).
+    ///
+    /// `merchant_id` is **required** by the API; omitting it returns `400 "MerchantId: Wrong merchant."`.
+    pub async fn revoke_token(&self, client_id: &str, merchant_id: &str) -> Result<(), ApiError> {
+        let mut serializer = form_urlencoded::Serializer::new(String::new());
+        serializer.append_pair("merchantId", merchant_id);
+        let qs = serializer.finish();
+        let path = format!("/pay-api/v1/merchants/tokens/{client_id}?{qs}");
         self.send_no_body(Method::DELETE, &path).await
     }
 }
@@ -144,18 +149,19 @@ mod tests {
     // ── revoke_token ──────────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn revoke_token_deletes_to_correct_path_returns_unit() {
+    async fn revoke_token_deletes_to_correct_path_with_merchant_id_query_param() {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
             .and(path("/pay-api/v1/merchants/tokens/client-abc-123"))
+            .and(query_param("merchantId", "merchant-001"))
             .and(header("authorization", "Bearer test-token"))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
 
         let api = test_client(server.uri());
-        let result = api.revoke_token("client-abc-123").await;
+        let result = api.revoke_token("client-abc-123", "merchant-001").await;
         assert!(result.is_ok());
     }
 
@@ -165,6 +171,7 @@ mod tests {
 
         Mock::given(method("DELETE"))
             .and(path("/pay-api/v1/merchants/tokens/client-gone"))
+            .and(query_param("merchantId", "merchant-001"))
             .and(header("authorization", "Bearer test-token"))
             .respond_with(ResponseTemplate::new(404).set_body_json(json!({
                 "title": "Not Found",
@@ -175,7 +182,7 @@ mod tests {
 
         let api = test_client(server.uri());
         // The raw call returns an Err(ApiError::Api{status:404,...})
-        let result = api.revoke_token("client-gone").await;
+        let result = api.revoke_token("client-gone", "merchant-001").await;
         // The error is a 404 — treat_404_as_ok will convert it to Ok
         let converted = crate::treat_404_as_ok(result);
         assert!(

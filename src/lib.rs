@@ -94,7 +94,7 @@ pub(crate) fn build_client(profile: &str) -> anyhow::Result<(config::Profile, ap
 }
 
 /// Route tracing output based on the `debug` flag:
-///   debug=true  → stdout at DEBUG level (per spec: "outputs every HTTP call to stdout")
+///   debug=true  → stderr at DEBUG level (HTTP traces go to stderr so `--output json` stdout stays parseable)
 ///   debug=false → stderr at WARN/INFO
 ///
 /// `RUST_LOG` always overrides the default filter when set.
@@ -110,7 +110,7 @@ fn init_tracing(debug: bool) {
     if debug {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(env_filter)
-            .with_writer(std::io::stdout)
+            .with_writer(std::io::stderr)
             .with_ansi(false)
             .try_init();
     } else {
@@ -166,8 +166,8 @@ async fn dispatch_subscriptions(
 ) -> anyhow::Result<()> {
     use cli::SubscriptionsCommand;
     use cli::subscriptions::{
-        CreateArgs, build_subscription_body, render_subscription, render_subscription_list,
-        render_subscription_payments,
+        CreateArgs, build_subscription_body, filter_subscriptions_by_status, render_subscription,
+        render_subscription_list, render_subscription_payments,
     };
 
     match sc {
@@ -216,11 +216,23 @@ async fn dispatch_subscriptions(
             page,
             search,
             customer_id,
+            status,
         } => {
             let (p, api) = build_client(profile)?;
-            let result = api
+            let mut result = api
                 .list_subscriptions(page, Some(limit), search.as_deref(), customer_id.as_deref())
                 .await?;
+            if let Some(ref s) = status {
+                let items = result
+                    .get("items")
+                    .and_then(|x| x.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                let filtered = filter_subscriptions_by_status(items, s);
+                if let Some(obj) = result.as_object_mut() {
+                    obj.insert("items".into(), serde_json::Value::Array(filtered));
+                }
+            }
             render_subscription_list(&result, output_fmt, &p.name)
         }
         SubscriptionsCommand::Payments { id } => {

@@ -300,6 +300,31 @@ pub(crate) fn subscription_payments_table(items: &[Value]) -> String {
     rows.join("\n")
 }
 
+// ── Client-side filter helpers ────────────────────────────────────────────────
+
+/// Filter a list of subscription items by `status` (case-insensitive).
+///
+/// - If `status` is empty after trimming, all items are returned unchanged.
+/// - Items that have no `status` field are **excluded** (they cannot match).
+/// - The comparison is case-insensitive so `"active"` matches `"Active"`.
+///
+/// This is a **pure function** — no I/O, no network — trivially unit-testable.
+pub fn filter_subscriptions_by_status(items: Vec<Value>, status: &str) -> Vec<Value> {
+    let needle = status.trim().to_lowercase();
+    if needle.is_empty() {
+        return items;
+    }
+    items
+        .into_iter()
+        .filter(|item| {
+            item.get("status")
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_lowercase() == needle)
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
 // ── High-level render functions ───────────────────────────────────────────────
 
 /// Render a single subscription (get/create/terminate response).
@@ -835,6 +860,55 @@ mod tests {
         assert!(table.contains("sub-w01"));
         assert!(table.contains("Carol"));
         assert!(table.contains("9.99"));
+    }
+
+    // ── filter_subscriptions_by_status ───────────────────────────────────────
+
+    fn sub_items() -> Vec<Value> {
+        vec![
+            json!({ "subscriptionId": "s1", "status": "Active" }),
+            json!({ "subscriptionId": "s2", "status": "Paused" }),
+            json!({ "subscriptionId": "s3", "status": "Terminated" }),
+            json!({ "subscriptionId": "s4" }), // no status field
+        ]
+    }
+
+    #[test]
+    fn filter_status_exact_match() {
+        let filtered = filter_subscriptions_by_status(sub_items(), "Active");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0]["subscriptionId"], "s1");
+    }
+
+    #[test]
+    fn filter_status_case_insensitive() {
+        let filtered = filter_subscriptions_by_status(sub_items(), "active");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0]["subscriptionId"], "s1");
+
+        let filtered2 = filter_subscriptions_by_status(sub_items(), "PAUSED");
+        assert_eq!(filtered2.len(), 1);
+        assert_eq!(filtered2[0]["subscriptionId"], "s2");
+    }
+
+    #[test]
+    fn filter_status_no_filter_when_empty() {
+        let all = sub_items();
+        let filtered = filter_subscriptions_by_status(all.clone(), "");
+        assert_eq!(filtered.len(), all.len());
+    }
+
+    #[test]
+    fn filter_status_items_missing_status_excluded() {
+        // s4 has no status field — must be excluded even when no filter active
+        // (passthrough with empty string returns all 4, but when a real status
+        //  is passed the missing-status item is excluded)
+        let filtered = filter_subscriptions_by_status(sub_items(), "Active");
+        let ids: Vec<&str> = filtered
+            .iter()
+            .filter_map(|v| v["subscriptionId"].as_str())
+            .collect();
+        assert!(!ids.contains(&"s4"), "item without status must be excluded");
     }
 
     // ── Envelope shape tests ──────────────────────────────────────────────────

@@ -199,8 +199,9 @@ pub enum TransactionsCommand {
         #[arg(long)]
         payment_method_id: Option<String>,
 
-        /// Currency ID (server defaults when absent).
-        #[arg(long)]
+        /// Currency ID. The API requires this; defaults to 1 (USD). Override for
+        /// other currencies.
+        #[arg(long, default_value = "1")]
         currency_id: Option<i32>,
 
         /// Card data source enum (default 1 = Internet/ISV API).
@@ -1049,6 +1050,11 @@ pub enum SubscriptionsCommand {
         /// Filter by customer UUID. Maps to `customerIds` on the API.
         #[arg(long)]
         customer_id: Option<String>,
+
+        /// Filter results by subscription status (e.g. `active`, `paused`, `terminated`).
+        /// Applied client-side to the returned page only — does NOT send a server query param.
+        #[arg(long)]
+        status: Option<String>,
     },
 
     /// List payments for a subscription (GET /sub-api/v1/subscriptions/{id}/payments).
@@ -1074,9 +1080,29 @@ pub enum SubscriptionsCommand {
 mod tests {
     use super::*;
     use clap::CommandFactory;
+    use clap::Parser;
 
     #[test]
     fn cli_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn transactions_auth_currency_id_defaults_to_1() {
+        let cli = Cli::try_parse_from(["flute", "transactions", "auth", "--amount", "1.00"])
+            .expect("parse must succeed");
+        match cli.command {
+            Some(Command::Transactions(cmd)) => match *cmd {
+                TransactionsCommand::Auth { currency_id, .. } => {
+                    assert_eq!(
+                        currency_id,
+                        Some(1),
+                        "--currency-id must default to Some(1) for auth"
+                    );
+                }
+                other => panic!("expected Auth variant, got {other:?}"),
+            },
+            other => panic!("expected Transactions command, got {other:?}"),
+        }
     }
 }

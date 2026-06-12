@@ -11,7 +11,7 @@
 **Homebrew (macOS / Linux)**
 
 ```sh
-brew install getflute/flute-cli/flute
+brew install getflute/flute-cli/flute-cli
 ```
 
 **Shell script (maps to GitHub Releases)**

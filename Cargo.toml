@@ -1,0 +1,52 @@
+[package]
+name = "flute-cli"
+version = "0.1.0"
+edition = "2024"
+description = "Cross-platform CLI for the Flute payments platform"
+license = "MIT"
+readme = "readme.md"
+# TODO: confirm these coordinates before the first real release
+repository = "https://github.com/getflute/flute-cli"
+homepage = "https://github.com/getflute/flute-cli"
+
+[[bin]]
+name = "flute"
+path = "src/main.rs"
+
+[lib]
+name = "flute_cli"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+rust_decimal = "1"
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+axoupdater = { version = "0.10.0", default-features = false, features = ["tokio", "github_releases"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent"] }
+toml = "0.8"
+dirs = "5"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+rpassword = "7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3"
+pretty_assertions = "1"
+assert_cmd = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "test-util"] }
+temp-env = "0.3"
+predicates = "3.1.4"
+
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -1,6 +1,7 @@
 //! Clap argument tree for the `flute` binary.
 
 use clap::{Parser, Subcommand};
+pub use clap_complete::Shell;
 
 pub mod ach;
 pub mod auth;
@@ -79,6 +80,14 @@ pub enum Command {
     /// Subscription operations (create, get, list, payments, terminate).
     #[command(subcommand)]
     Subscriptions(Box<SubscriptionsCommand>),
+    /// Print shell completion script for the given shell.
+    Completion {
+        /// Shell to generate completions for.
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+    /// Update the flute CLI to the latest release.
+    Update,
 }
 
 #[derive(Subcommand, Debug)]

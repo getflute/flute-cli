@@ -32,9 +32,9 @@ install-updater = false
 # secret on the main repo carries a fine-grained PAT with Contents: write on
 # the tap. Without this block, cargo-dist only attaches the .rb file to the
 # Release page; brew users have to install via direct URL instead of
-# `brew install flute-payments/homebrew-tap/flute`.
+# `brew install getflute/homebrew-tap/flute`.
 # TODO: confirm tap name before first release
-tap = "flute-payments/homebrew-tap"
+tap = "getflute/homebrew-tap"
 publish-jobs = ["homebrew"]
 
 # System packages required at build time on each target's runner. The

@@ -21,7 +21,7 @@ use anyhow::{Context, Result};
 use axoupdater::{AxoUpdater, ReleaseSource, ReleaseSourceType};
 
 pub const APP_NAME: &str = "flute";
-pub const REPO_OWNER: &str = "flute-payments";
+pub const REPO_OWNER: &str = "getflute";
 pub const REPO_NAME: &str = "flute-cli";
 
 /// Returns `Some(latest_version_string)` if a newer version exists on GitHub

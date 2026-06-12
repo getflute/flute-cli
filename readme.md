@@ -11,7 +11,7 @@
 **Homebrew (macOS / Linux)**
 
 ```sh
-brew install flute-payments/tap/flute
+brew install getflute/tap/flute
 ```
 
 **Shell script (maps to GitHub Releases)**

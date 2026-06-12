@@ -8,8 +8,8 @@
 # `dist init` then `dist generate` to regenerate this file from the
 # canonical template and drop this notice.
 #
-# TODO: confirm repo (flute-payments/flute-cli) and tap
-# (flute-payments/homebrew-tap) coordinates before the first real release.
+# TODO: confirm repo (getflute/flute-cli) and tap
+# (getflute/homebrew-tap) coordinates before the first real release.
 #
 # CI that:
 #
@@ -303,7 +303,7 @@ jobs:
         with:
           persist-credentials: true
           # TODO: confirm tap repo name before first release
-          repository: "flute-payments/homebrew-tap"
+          repository: "getflute/homebrew-tap"
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
       # So we have access to the formula
       - name: Fetch homebrew formulae

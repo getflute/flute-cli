@@ -37,7 +37,7 @@
 - `currencyId`: int — `--currency-id`, **default 1** (USD)
 - `paymentFrequencyUnit`: enum PaymentFrequencyUnitDto — `--interval` accepts `day|week|month`
   (also `daily|weekly|monthly` aliases) → **1=Day, 2=Week, 3=Month**
-- `paymentFrequency`: int — `--frequency`, default `1` (every 1 unit)
+- `paymentFrequency`: int — `--payment-frequency`, default `1` (every 1 unit)
 - `numberOfPayments`: int — `--number-of-payments` (**required**; total scheduled payments)
 - `transactionType`: enum SubscriptionTransactionTypeDto — `--transaction-type`, **default 2=Sale**
   (1=Authorization, 2=Sale, 11=AchDebit)

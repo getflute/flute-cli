@@ -111,7 +111,7 @@ pub(crate) fn settlement_table(v: &Value) -> String {
 
 /// Render a settlement batch list response.
 ///
-/// - `json`  → `Envelope { object: "settlement_list", data: {items,total}, … }`
+/// - `json`  → `Envelope { object: "settlement_list", data: raw response, … }`
 /// - `table` → columnar table via [`settlement_list_table`]
 /// - `quiet` → one `id` per line
 pub fn render_settlement_list(
@@ -119,12 +119,11 @@ pub fn render_settlement_list(
     fmt: OutputFormat,
     environment: &str,
 ) -> anyhow::Result<()> {
-    let (items, total) = extract_settlement_items(v);
+    let (items, _total) = extract_settlement_items(v);
 
     match fmt {
         OutputFormat::Json => {
-            let data = serde_json::json!({ "items": items, "total": total });
-            let env = Envelope::new("settlement_list", data, environment, None);
+            let env = Envelope::new("settlement_list", v.clone(), environment, None);
             println!("{}", serde_json::to_string_pretty(&env)?);
         }
         OutputFormat::Table => {

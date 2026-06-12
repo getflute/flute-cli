@@ -190,8 +190,16 @@ pub(crate) fn subscription_table(v: &Value) -> String {
             .unwrap_or_else(|| "—".to_string())
     };
 
+    let trunc_date = |k: &str| {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .unwrap_or("—")
+            .to_string()
+    };
+
     format!(
-        "id:                     {}\nstatus:                 {}\ncustomerId:             {}\npaymentAmount:          {}\ncurrencyId:             {}\npaymentFrequencyUnit:   {}\npaymentFrequency:       {}\nnumberOfPayments:       {}\nsuccessfulPaymentsCount:{}\nnextPaymentDate:        {}",
+        "id:                      {}\nstatus:                  {}\ncustomerId:              {}\npaymentAmount:           {}\ncurrencyId:              {}\npaymentFrequencyUnit:    {}\npaymentFrequency:        {}\nnumberOfPayments:        {}\nsuccessfulPaymentsCount: {}\nnextPaymentDate:         {}",
         sub_id(v),
         get_str("status"),
         get_str("customerId"),
@@ -201,7 +209,7 @@ pub(crate) fn subscription_table(v: &Value) -> String {
         get_u("paymentFrequency"),
         get_u("numberOfPayments"),
         get_u("successfulPaymentsCount"),
-        get_str("nextPaymentDate"),
+        trunc_date("nextPaymentDate"),
     )
 }
 

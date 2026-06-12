@@ -7,6 +7,7 @@
 use crate::api::client::ApiClient;
 use crate::api::error::ApiError;
 use reqwest::Method;
+use url::form_urlencoded;
 
 impl ApiClient {
     /// POST `/pay-api/v1/transactions/sale` — charge a card immediately.
@@ -83,25 +84,21 @@ impl ApiClient {
         page_size: Option<u32>,
         no_batch: Option<bool>,
     ) -> Result<serde_json::Value, ApiError> {
-        let mut params: Vec<(&str, String)> = Vec::new();
+        let mut ser = form_urlencoded::Serializer::new(String::new());
         if let Some(p) = page {
-            params.push(("page", p.to_string()));
+            ser.append_pair("page", &p.to_string());
         }
         if let Some(ps) = page_size {
-            params.push(("pageSize", ps.to_string()));
+            ser.append_pair("pageSize", &ps.to_string());
         }
         if let Some(nb) = no_batch {
-            params.push(("noBatch", nb.to_string()));
+            ser.append_pair("noBatch", &nb.to_string());
         }
+        let qs = ser.finish();
 
-        let path = if params.is_empty() {
+        let path = if qs.is_empty() {
             "/pay-api/v1/transactions".to_string()
         } else {
-            let qs: String = params
-                .iter()
-                .map(|(k, v)| format!("{k}={v}"))
-                .collect::<Vec<_>>()
-                .join("&");
             format!("/pay-api/v1/transactions?{qs}")
         };
 

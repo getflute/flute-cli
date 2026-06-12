@@ -132,7 +132,7 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 - `revoke --client-id <uuid> --merchant-id <uuid> --yes` — **`--merchant-id` is required** (DELETE needs it as a query param) and `--yes` is required. 404 is idempotent success.
 
 ### Utility — `flute …`
-`ping` (health check), `version`, `update` (self-update; no-op message if built from source), `completion bash|zsh|fish`.
+`ping` (health check), `version`, `update` (self-update; no-op message if built from source), `completion bash|zsh|fish|powershell|elvish`.
 
 ---
 

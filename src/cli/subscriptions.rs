@@ -9,7 +9,6 @@
 //! `sub_id(v)` tries both fields (same pattern as `pos_id` in pos.rs).
 
 use clap::ValueEnum;
-use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 
 use crate::api::models::to_amount_number;
@@ -53,6 +52,8 @@ impl Interval {
 pub struct CreateArgs {
     pub customer_id: String,
     pub payment_method_id: String,
+    /// Pre-validated amount decimal. Use [`validate_create_args`] or
+    /// [`parse_amount`] before constructing this struct.
     pub amount: String,
     pub currency_id: i32,
     pub number_of_payments: u32,
@@ -70,14 +71,16 @@ pub struct CreateArgs {
 
 /// Build the JSON request body for `subscriptions create`.
 ///
-/// This is a **pure function** — no I/O, no network, trivially unit-testable.
+/// Returns `Err` if `args.amount` fails validation (non-numeric, negative, or
+/// more than 2 decimal places). Callers must propagate the error; an invalid
+/// amount must **never** silently become $0.00.
 ///
 /// ## Field mapping
 /// | Arg field             | Wire key                | Notes                                   |
 /// |-----------------------|-------------------------|-----------------------------------------|
 /// | `customer_id`         | `customerId`            | required UUID                           |
 /// | `payment_method_id`   | `paymentMethodId`       | required UUID; must be vaulted+active   |
-/// | `amount`              | `amount`                | exact decimal via `to_amount_number`    |
+/// | `amount`              | `amount`                | validated decimal via `parse_amount`    |
 /// | `currency_id`         | `currencyId`            | default 1 (USD)                         |
 /// | `number_of_payments`  | `numberOfPayments`      | required integer                        |
 /// | `payment_frequency`   | `paymentFrequency`      | default 1 (every 1 unit)                |
@@ -88,7 +91,7 @@ pub struct CreateArgs {
 /// | `start_date`          | `paymentStartDateTime`  | optional ISO date-time                  |
 /// | `sec_code`            | `secCode`               | optional; ACH-only                      |
 /// | `faster`              | `isFasterProcessing`    | only included when true                 |
-pub fn build_subscription_body(args: &CreateArgs) -> Value {
+pub fn build_subscription_body(args: &CreateArgs) -> anyhow::Result<Value> {
     let mut obj = Map::new();
 
     // Required fields
@@ -98,9 +101,9 @@ pub fn build_subscription_body(args: &CreateArgs) -> Value {
         Value::String(args.payment_method_id.clone()),
     );
 
-    // Amount — parse losslessly; fall back to 0 if the string is somehow
-    // invalid (validation should have caught this before we reach the builder)
-    let amount_decimal = parse_amount(&args.amount).unwrap_or(Decimal::ZERO);
+    // Amount — validate strictly; an invalid/negative/garbage amount is a hard
+    // error, not a silent $0.00 fallback.
+    let amount_decimal = parse_amount(&args.amount)?;
     obj.insert("amount".into(), to_amount_number(amount_decimal));
 
     // Defaulted integer fields
@@ -129,7 +132,7 @@ pub fn build_subscription_body(args: &CreateArgs) -> Value {
         obj.insert("isFasterProcessing".into(), json!(true));
     }
 
-    Value::Object(obj)
+    Ok(Value::Object(obj))
 }
 
 // ── ID normalisation helper ───────────────────────────────────────────────────
@@ -501,7 +504,7 @@ mod tests {
     #[test]
     fn build_subscription_body_required_fields_present() {
         let args = base_create_args();
-        let body = build_subscription_body(&args);
+        let body = build_subscription_body(&args).expect("valid args must produce Ok body");
 
         assert_eq!(body["customerId"], "cust-uuid-001");
         assert_eq!(body["paymentMethodId"], "pm-uuid-001");
@@ -522,7 +525,7 @@ mod tests {
     #[test]
     fn build_subscription_body_defaults_are_correct() {
         let args = base_create_args();
-        let body = build_subscription_body(&args);
+        let body = build_subscription_body(&args).expect("valid args must produce Ok body");
 
         // Defaults
         assert_eq!(body["currencyId"], 1, "currency default must be 1 (USD)");
@@ -560,7 +563,7 @@ mod tests {
         args.sec_code = Some(2);
         args.faster = true;
 
-        let body = build_subscription_body(&args);
+        let body = build_subscription_body(&args).expect("valid args must produce Ok body");
 
         assert_eq!(body["paymentProcessorId"], "pp-uuid-001");
         assert_eq!(body["paymentStartDateTime"], "2026-08-01T00:00:00Z");
@@ -572,7 +575,7 @@ mod tests {
     fn build_subscription_body_interval_day_maps_to_1() {
         let mut args = base_create_args();
         args.interval = Interval::Day;
-        let body = build_subscription_body(&args);
+        let body = build_subscription_body(&args).expect("valid args must produce Ok body");
         assert_eq!(body["paymentFrequencyUnit"], 1);
     }
 
@@ -580,8 +583,40 @@ mod tests {
     fn build_subscription_body_interval_week_maps_to_2() {
         let mut args = base_create_args();
         args.interval = Interval::Week;
-        let body = build_subscription_body(&args);
+        let body = build_subscription_body(&args).expect("valid args must produce Ok body");
         assert_eq!(body["paymentFrequencyUnit"], 2);
+    }
+
+    // ── Amount validation (money bug fix) ─────────────────────────────────────
+
+    #[test]
+    fn build_subscription_body_rejects_garbage_amount() {
+        let mut args = base_create_args();
+        args.amount = "abc".into();
+        assert!(
+            build_subscription_body(&args).is_err(),
+            "garbage amount 'abc' must be rejected with Err"
+        );
+    }
+
+    #[test]
+    fn build_subscription_body_rejects_negative_amount() {
+        let mut args = base_create_args();
+        args.amount = "-5.00".into();
+        assert!(
+            build_subscription_body(&args).is_err(),
+            "negative amount '-5.00' must be rejected with Err"
+        );
+    }
+
+    #[test]
+    fn build_subscription_body_rejects_sub_cent_amount() {
+        let mut args = base_create_args();
+        args.amount = "1.005".into();
+        assert!(
+            build_subscription_body(&args).is_err(),
+            "sub-cent amount '1.005' (>2 dp) must be rejected with Err"
+        );
     }
 
     // ── sub_id helper ─────────────────────────────────────────────────────────

@@ -201,7 +201,7 @@ async fn dispatch_subscriptions(
                 sec_code,
                 faster,
             };
-            let body = build_subscription_body(&args);
+            let body = build_subscription_body(&args)?;
             let (p, api) = build_client(profile)?;
             let result = api.create_subscription(body).await?;
             render_subscription(&result, output_fmt, &p.name)

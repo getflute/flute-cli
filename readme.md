@@ -147,6 +147,8 @@ Errors (non-zero exit) are also written to **stdout** as structured JSON when `-
 
 ## Shell completions
 
+Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`.
+
 Generate and install a completion script:
 
 ```sh
@@ -158,6 +160,12 @@ flute completion zsh > /usr/local/share/zsh/site-functions/_flute
 
 # Fish
 flute completion fish > ~/.config/fish/completions/flute.fish
+
+# PowerShell
+flute completion powershell >> $PROFILE
+
+# Elvish
+flute completion elvish >> ~/.config/elvish/rc.elv
 ```
 
 ---

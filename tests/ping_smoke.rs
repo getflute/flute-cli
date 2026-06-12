@@ -81,8 +81,8 @@ fn version_exits_zero_and_contains_version_string() {
     assert!(output.status.success(), "expected exit 0");
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(
-        stdout.contains("0.1.0"),
-        "version output should contain '0.1.0', got: {stdout:?}"
+        stdout.contains("0.1.1"),
+        "version output should contain '0.1.1', got: {stdout:?}"
     );
 }
 

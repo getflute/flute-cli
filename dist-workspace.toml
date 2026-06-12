@@ -1,0 +1,46 @@
+# TODO: the repo/tap coordinates below are placeholders — confirm before the first real release.
+# After installing cargo-dist, run `dist init` to confirm settings, then `dist generate` to
+# regenerate .github/workflows/release.yml from the canonical template.
+
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.31.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "powershell", "homebrew"]
+# Target platforms to build apps for (Rust target-triple syntax)
+# Full matrix: macOS amd64+arm64, Linux amd64+arm64, Windows amd64
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Where to host releases
+hosting = "github"
+# Whether to install an updater program
+install-updater = false
+# Homebrew tap to publish the formula to on every release. The HOMEBREW_TAP_TOKEN
+# secret on the main repo carries a fine-grained PAT with Contents: write on
+# the tap. Without this block, cargo-dist only attaches the .rb file to the
+# Release page; brew users have to install via direct URL instead of
+# `brew install flute-payments/homebrew-tap/flute`.
+# TODO: confirm tap name before first release
+tap = "flute-payments/homebrew-tap"
+publish-jobs = ["homebrew"]
+
+# System packages required at build time on each target's runner. The
+# keyring crate's `linux-native-sync-persistent` backend links against
+# libdbus-1, so the Ubuntu runner needs libdbus-1-dev + pkg-config or the
+# build fails inside libdbus-sys's build.rs.
+[dist.dependencies.apt]
+libdbus-1-dev = "*"
+pkg-config = "*"

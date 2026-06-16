@@ -11,7 +11,7 @@
 
 use serde_json::Value;
 
-use crate::cli::output::{Envelope, OutputFormat, fit};
+use crate::cli::output::{Envelope, OutputFormat, fit, prefix_chars};
 
 // ── Render helpers ────────────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ pub(crate) fn settlement_list_table(items: &[Value]) -> String {
         let batch_date = item
             .get("batchDateTime")
             .and_then(|v| v.as_str())
-            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .map(|s| prefix_chars(s, 10))
             .unwrap_or("—");
         let txns = item
             .get("transactionCount")

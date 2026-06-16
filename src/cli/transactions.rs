@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 
 use crate::api::models::to_amount_number;
-use crate::cli::output::{Envelope, OutputFormat};
+use crate::cli::output::{Envelope, OutputFormat, prefix_chars, prefix_chars_exact};
 
 // ── Body-builder ─────────────────────────────────────────────────────────────
 
@@ -51,17 +51,17 @@ pub(crate) struct SaleArgs {
 /// | 2   | Unit price    | `unitPrice`     |
 /// | 3   | Unit of meas. | `unitOfMeasure` |
 /// | 4   | Quantity      | `quantity`      |
-fn parse_l3_product(s: &str) -> Value {
+fn parse_l3_product(s: &str) -> Result<Value> {
     // Reject entirely blank/whitespace input or input with no description
     let trimmed = s.trim();
     if trimmed.is_empty() {
-        return Value::Null;
+        return Ok(Value::Null);
     }
     let parts: Vec<&str> = trimmed.splitn(5, ',').collect();
     // description (pos 0) must be non-empty after trimming
     let description = parts.first().map(|v| v.trim()).unwrap_or("");
     if description.is_empty() {
-        return Value::Null;
+        return Ok(Value::Null);
     }
     let mut obj = Map::new();
     // description (pos 0)
@@ -81,7 +81,7 @@ fn parse_l3_product(s: &str) -> Value {
         && !v.trim().is_empty()
     {
         if let Ok(d) = v.trim().parse::<Decimal>() {
-            obj.insert("unitPrice".into(), to_amount_number(d));
+            obj.insert("unitPrice".into(), to_amount_number(d)?);
         } else {
             obj.insert("unitPrice".into(), Value::String(v.trim().to_string()));
         }
@@ -97,12 +97,12 @@ fn parse_l3_product(s: &str) -> Value {
         && !v.trim().is_empty()
     {
         if let Ok(d) = v.trim().parse::<Decimal>() {
-            obj.insert("quantity".into(), to_amount_number(d));
+            obj.insert("quantity".into(), to_amount_number(d)?);
         } else {
             obj.insert("quantity".into(), Value::String(v.trim().to_string()));
         }
     }
-    Value::Object(obj)
+    Ok(Value::Object(obj))
 }
 
 /// Build the JSON request body for a `sale` or `auth` request.
@@ -121,7 +121,7 @@ pub(crate) fn build_sale_body(args: &SaleArgs) -> Result<Value> {
     let mut obj = Map::new();
 
     // Required-ish fields always present
-    obj.insert("amount".into(), to_amount_number(args.amount));
+    obj.insert("amount".into(), to_amount_number(args.amount)?);
     obj.insert("cardDataSource".into(), json!(args.card_data_source));
     obj.insert("customerInitiatedTransaction".into(), json!(false));
 
@@ -140,7 +140,7 @@ pub(crate) fn build_sale_body(args: &SaleArgs) -> Result<Value> {
 
     // Optional amount/tip
     if let Some(tip) = args.tip_amount {
-        obj.insert("tipAmount".into(), to_amount_number(tip));
+        obj.insert("tipAmount".into(), to_amount_number(tip)?);
     }
 
     // Optional customer/payment-method references
@@ -163,7 +163,7 @@ pub(crate) fn build_sale_body(args: &SaleArgs) -> Result<Value> {
 
     // L2 data — only when tax rate is provided
     if let Some(rate) = args.l2_tax_rate {
-        let l2 = json!({ "salesTaxRate": to_amount_number(rate) });
+        let l2 = json!({ "salesTaxRate": to_amount_number(rate)? });
         obj.insert("l2".into(), l2);
     }
 
@@ -182,6 +182,8 @@ pub(crate) fn build_sale_body(args: &SaleArgs) -> Result<Value> {
                 .l3_product
                 .iter()
                 .map(|s| parse_l3_product(s))
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
                 .filter(|v| !v.is_null())
                 .collect();
             if !products.is_empty() {
@@ -293,9 +295,7 @@ pub(crate) fn filter_items(
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 // Grab just the date portion (first 10 chars = "YYYY-MM-DD")
-                let item_date: &str = if date_str.len() >= 10 {
-                    &date_str[..10]
-                } else {
+                let Some(item_date) = prefix_chars_exact(date_str, 10) else {
                     return false; // can't compare — exclude
                 };
 
@@ -340,7 +340,7 @@ pub(crate) fn transaction_list_table(items: &[serde_json::Value]) -> String {
         let date = item
             .get("date")
             .and_then(|v| v.as_str())
-            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .map(|s| prefix_chars(s, 10))
             .unwrap_or("—");
 
         let status = item.get("status").and_then(|v| v.as_str()).unwrap_or("—");
@@ -608,16 +608,16 @@ pub(crate) fn parse_exp(s: &str) -> anyhow::Result<(u32, u32)> {
 pub(crate) fn build_capture_body(
     transaction_id: &str,
     amount: Option<rust_decimal::Decimal>,
-) -> Value {
+) -> Result<Value> {
     let mut obj = Map::new();
     obj.insert(
         "transactionId".into(),
         Value::String(transaction_id.to_string()),
     );
     if let Some(a) = amount {
-        obj.insert("amount".into(), to_amount_number(a));
+        obj.insert("amount".into(), to_amount_number(a)?);
     }
-    Value::Object(obj)
+    Ok(Value::Object(obj))
 }
 
 /// Build the JSON request body for a `void` request.
@@ -646,7 +646,7 @@ pub(crate) fn build_refund_body(
     transaction_id: &str,
     amount: Option<rust_decimal::Decimal>,
     card_data_source: i32,
-) -> Value {
+) -> Result<Value> {
     let mut obj = Map::new();
     obj.insert(
         "transactionId".into(),
@@ -654,9 +654,9 @@ pub(crate) fn build_refund_body(
     );
     obj.insert("cardDataSource".into(), json!(card_data_source));
     if let Some(a) = amount {
-        obj.insert("amount".into(), to_amount_number(a));
+        obj.insert("amount".into(), to_amount_number(a)?);
     }
-    Value::Object(obj)
+    Ok(Value::Object(obj))
 }
 
 /// Build the JSON request body for a `settle` request.
@@ -684,14 +684,14 @@ pub(crate) fn build_settle_body(payment_processor_id: &str) -> Value {
 pub(crate) fn build_tip_adjust_body(
     transaction_id: &str,
     tip_amount: rust_decimal::Decimal,
-) -> Value {
+) -> Result<Value> {
     let mut obj = Map::new();
     obj.insert(
         "transactionId".into(),
         Value::String(transaction_id.to_string()),
     );
-    obj.insert("tipAmount".into(), to_amount_number(tip_amount));
-    Value::Object(obj)
+    obj.insert("tipAmount".into(), to_amount_number(tip_amount)?);
+    Ok(Value::Object(obj))
 }
 
 // ── Golden-file output regression tests ───────────────────────────────────────
@@ -1165,7 +1165,7 @@ mod tests {
 
     #[test]
     fn parse_l3_product_parses_all_fields() {
-        let v = parse_l3_product("Widget A,SKU-42,9.99,EA,5");
+        let v = parse_l3_product("Widget A,SKU-42,9.99,EA,5").unwrap();
         assert_eq!(v["description"], "Widget A");
         assert_eq!(v["productCode"], "SKU-42");
         assert!(v["unitPrice"].is_number());
@@ -1177,7 +1177,7 @@ mod tests {
     #[test]
     fn parse_l3_product_handles_partial_fields() {
         // Only description provided
-        let v = parse_l3_product("Widget Only");
+        let v = parse_l3_product("Widget Only").unwrap();
         assert_eq!(v["description"], "Widget Only");
         assert!(v.get("productCode").is_none());
     }
@@ -1185,11 +1185,11 @@ mod tests {
     #[test]
     fn parse_l3_product_empty_string_returns_null() {
         assert!(
-            parse_l3_product("").is_null(),
+            parse_l3_product("").unwrap().is_null(),
             "empty string must return Null"
         );
         assert!(
-            parse_l3_product("   ").is_null(),
+            parse_l3_product("   ").unwrap().is_null(),
             "whitespace-only must return Null"
         );
     }
@@ -1225,7 +1225,7 @@ mod tests {
 
     #[test]
     fn build_capture_body_full_capture_has_no_amount() {
-        let body = build_capture_body("txn-uuid-001", None);
+        let body = build_capture_body("txn-uuid-001", None).unwrap();
         assert_eq!(body["transactionId"], "txn-uuid-001");
         assert!(
             body.get("amount").is_none(),
@@ -1235,7 +1235,8 @@ mod tests {
 
     #[test]
     fn build_capture_body_partial_capture_has_exact_amount() {
-        let body = build_capture_body("txn-uuid-002", Some(Decimal::from_str("50.00").unwrap()));
+        let body =
+            build_capture_body("txn-uuid-002", Some(Decimal::from_str("50.00").unwrap())).unwrap();
         assert_eq!(body["transactionId"], "txn-uuid-002");
         assert!(body["amount"].is_number(), "amount must be a JSON number");
         assert_eq!(
@@ -1260,7 +1261,7 @@ mod tests {
 
     #[test]
     fn build_refund_body_full_refund_defaults_card_data_source() {
-        let body = build_refund_body("txn-refund-001", None, 1);
+        let body = build_refund_body("txn-refund-001", None, 1).unwrap();
         assert_eq!(body["transactionId"], "txn-refund-001");
         assert_eq!(body["cardDataSource"], 1);
         assert!(
@@ -1275,7 +1276,8 @@ mod tests {
             "txn-refund-002",
             Some(Decimal::from_str("25.00").unwrap()),
             1,
-        );
+        )
+        .unwrap();
         assert_eq!(body["transactionId"], "txn-refund-002");
         assert_eq!(body["cardDataSource"], 1);
         assert!(body["amount"].is_number());
@@ -1284,7 +1286,7 @@ mod tests {
 
     #[test]
     fn build_refund_body_respects_custom_card_data_source() {
-        let body = build_refund_body("txn-refund-003", None, 7);
+        let body = build_refund_body("txn-refund-003", None, 7).unwrap();
         assert_eq!(body["cardDataSource"], 7);
     }
 
@@ -1311,7 +1313,8 @@ mod tests {
 
     #[test]
     fn build_tip_adjust_body_sets_transaction_id_and_tip_amount() {
-        let body = build_tip_adjust_body("txn-tip-999", Decimal::from_str("3.50").unwrap());
+        let body =
+            build_tip_adjust_body("txn-tip-999", Decimal::from_str("3.50").unwrap()).unwrap();
         assert_eq!(body["transactionId"], "txn-tip-999");
         assert!(
             body["tipAmount"].is_number(),

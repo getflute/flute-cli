@@ -155,6 +155,20 @@ pub(crate) fn fit(s: &str, width: usize) -> String {
     }
 }
 
+/// Return at most `max_chars` Unicode scalar values from the start of `s`.
+pub(crate) fn prefix_chars(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((idx, _)) => &s[..idx],
+        None => s,
+    }
+}
+
+/// Return exactly `chars` leading Unicode scalar values, or `None` if shorter.
+pub(crate) fn prefix_chars_exact(s: &str, chars: usize) -> Option<&str> {
+    let prefix = prefix_chars(s, chars);
+    (prefix.chars().count() == chars).then_some(prefix)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +228,17 @@ mod tests {
         assert_eq!(out.chars().count(), 6);
         assert!(out.ends_with('…'));
         assert!(out.starts_with("hello"));
+    }
+
+    #[test]
+    fn prefix_chars_does_not_split_multibyte_chars() {
+        assert_eq!(prefix_chars("ééééééééééZ", 10), "éééééééééé");
+    }
+
+    #[test]
+    fn prefix_chars_exact_requires_enough_chars() {
+        assert_eq!(prefix_chars_exact("ééééééééééZ", 10), Some("éééééééééé"));
+        assert_eq!(prefix_chars_exact("ééé", 10), None);
     }
 
     #[test]

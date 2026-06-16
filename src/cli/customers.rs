@@ -8,7 +8,7 @@ use anyhow::Result;
 use serde_json::{Map, Value, json};
 
 use crate::cli::ach::{AccountHolderTypeArg, AccountTypeArg};
-use crate::cli::output::{Envelope, OutputFormat, fit};
+use crate::cli::output::{Envelope, OutputFormat, fit, prefix_chars};
 use crate::cli::transactions::parse_exp;
 
 // ── Body-builders ─────────────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ pub(crate) fn customer_list_table(items: &[Value]) -> String {
         let created = item
             .get("createdOn")
             .and_then(|v| v.as_str())
-            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .map(|s| prefix_chars(s, 10))
             .unwrap_or("—");
 
         rows.push(format!(

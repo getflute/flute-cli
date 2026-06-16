@@ -6,8 +6,6 @@
 
 ## Install
 
-> **Note:** Distribution packages are pending the first public release. The coordinates below are correct but the tap and install script will not resolve until release v0.1.1 is tagged.
-
 **Homebrew (macOS / Linux)**
 
 ```sh

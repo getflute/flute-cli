@@ -80,9 +80,12 @@ fn version_exits_zero_and_contains_version_string() {
 
     assert!(output.status.success(), "expected exit 0");
     let stdout = String::from_utf8(output.stdout).unwrap();
+    // Assert against the crate version rather than a hardcoded literal so this
+    // test survives version bumps.
+    let version = env!("CARGO_PKG_VERSION");
     assert!(
-        stdout.contains("0.1.1"),
-        "version output should contain '0.1.1', got: {stdout:?}"
+        stdout.contains(version),
+        "version output should contain '{version}', got: {stdout:?}"
     );
 }
 

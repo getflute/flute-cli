@@ -140,7 +140,7 @@ pub fn build_ach_body(args: &AchArgs) -> Result<Value> {
     let mut obj = Map::new();
 
     // Required fields — always present
-    obj.insert("amount".into(), to_amount_number(args.amount));
+    obj.insert("amount".into(), to_amount_number(args.amount)?);
     obj.insert(
         "paymentProcessorId".into(),
         Value::String(args.payment_processor_id.clone()),

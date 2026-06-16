@@ -75,8 +75,8 @@ flute transactions sale \
 
 | Profile | Alias | API |
 |---|---|---|
-| `sandbox` | — | `https://sandbox.api.uat.flute.com` (UAT-backed until the real sandbox ships) |
-| `production` | `prod` | `https://api.arise.risewithaurora.com` |
+| `sandbox` | — | `https://sandbox.api.flute.com` |
+| `production` | `prod` | `https://api.flute.com` |
 
 `sandbox` is the default. **Running any command against `production` prints a red warning banner to stderr.**
 

@@ -53,19 +53,18 @@ pub struct Profile {
 
 impl Profile {
     pub fn sandbox() -> Self {
-        // NOTE: `sandbox` points at UAT until the real sandbox env ships.
         Self {
             name: "sandbox".into(),
-            api_base_url: "https://sandbox.api.uat.flute.com".into(),
-            oauth_url: "https://sandbox.oauth.api.uat.flute.com/oauth2/token".into(),
+            api_base_url: "https://sandbox.api.flute.com".into(),
+            oauth_url: "https://sandbox.oauth.api.flute.com/oauth2/token".into(),
         }
     }
 
     pub fn production() -> Self {
         Self {
             name: "production".into(),
-            api_base_url: "https://api.arise.risewithaurora.com".into(),
-            oauth_url: "https://oauth.arise.risewithaurora.com/oauth2/token".into(),
+            api_base_url: "https://api.flute.com".into(),
+            oauth_url: "https://oauth.api.flute.com/oauth2/token".into(),
         }
     }
 
@@ -87,24 +86,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sandbox_points_at_uat() {
+    fn sandbox_points_at_sandbox() {
         let p = Profile::sandbox();
         assert_eq!(p.name, "sandbox");
-        assert_eq!(p.api_base_url, "https://sandbox.api.uat.flute.com");
+        assert_eq!(p.api_base_url, "https://sandbox.api.flute.com");
         assert_eq!(
             p.oauth_url,
-            "https://sandbox.oauth.api.uat.flute.com/oauth2/token"
+            "https://sandbox.oauth.api.flute.com/oauth2/token"
         );
     }
 
     #[test]
     fn production_points_at_prod() {
         let p = Profile::production();
-        assert_eq!(p.api_base_url, "https://api.arise.risewithaurora.com");
-        assert_eq!(
-            p.oauth_url,
-            "https://oauth.arise.risewithaurora.com/oauth2/token"
-        );
+        assert_eq!(p.api_base_url, "https://api.flute.com");
+        assert_eq!(p.oauth_url, "https://oauth.api.flute.com/oauth2/token");
     }
 
     #[test]

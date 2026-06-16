@@ -64,8 +64,8 @@ non-TTY/CI stream — JSON stdout stays pure.
 
 ## Environments
 
-`sandbox` → `https://sandbox.api.uat.flute.com` (UAT-backed until the real sandbox ships).
-`production` → `https://api.arise.risewithaurora.com`. Production commands print a red warning
+`sandbox` → `https://sandbox.api.flute.com`.
+`production` → `https://api.flute.com`. Production commands print a red warning
 banner to **stderr** (never stdout).
 
 ---

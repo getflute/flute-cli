@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 
 use crate::api::models::to_amount_number;
 use crate::cli::money::parse_amount;
-use crate::cli::output::{Envelope, OutputFormat, fit};
+use crate::cli::output::{Envelope, OutputFormat, fit, prefix_chars};
 
 // ── Interval enum ─────────────────────────────────────────────────────────────
 
@@ -104,7 +104,7 @@ pub fn build_subscription_body(args: &CreateArgs) -> anyhow::Result<Value> {
     // Amount — validate strictly; an invalid/negative/garbage amount is a hard
     // error, not a silent $0.00 fallback.
     let amount_decimal = parse_amount(&args.amount)?;
-    obj.insert("amount".into(), to_amount_number(amount_decimal));
+    obj.insert("amount".into(), to_amount_number(amount_decimal)?);
 
     // Defaulted integer fields
     obj.insert("currencyId".into(), json!(args.currency_id));
@@ -196,7 +196,7 @@ pub(crate) fn subscription_table(v: &Value) -> String {
     let trunc_date = |k: &str| {
         v.get(k)
             .and_then(|x| x.as_str())
-            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .map(|s| prefix_chars(s, 10))
             .unwrap_or("—")
             .to_string()
     };
@@ -243,7 +243,7 @@ pub(crate) fn subscription_list_table(items: &[Value]) -> String {
         let next = item
             .get("nextPaymentDate")
             .and_then(|x| x.as_str())
-            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .map(|s| prefix_chars(s, 10))
             .unwrap_or("—");
 
         rows.push(format!(
@@ -280,7 +280,7 @@ pub(crate) fn subscription_payments_table(items: &[Value]) -> String {
         let date = item
             .get("initialExecutionDateTime")
             .and_then(|x| x.as_str())
-            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .map(|s| prefix_chars(s, 10))
             .unwrap_or("—");
         let status = item.get("status").and_then(|x| x.as_str()).unwrap_or("—");
         let amount = item

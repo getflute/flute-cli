@@ -10,7 +10,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::cli::output::{Envelope, OutputFormat, fit};
+use crate::cli::output::{Envelope, OutputFormat, fit, prefix_chars};
 
 // ── Body builders ─────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ pub(crate) fn token_list_table(items: &[Value]) -> String {
         let created = item
             .get("creationDate")
             .and_then(|v| v.as_str())
-            .map(|s| if s.len() >= 10 { &s[..10] } else { s })
+            .map(|s| prefix_chars(s, 10))
             .unwrap_or("—");
 
         rows.push(format!(

@@ -69,20 +69,20 @@ pub fn build_pos_create_body(args: &PosCreateArgs) -> anyhow::Result<Value> {
     // Amount (optional; parse via to_amount_number)
     if let Some(ref raw) = args.amount {
         let d = parse_amount(raw)?;
-        obj.insert("amount".into(), to_amount_number(d));
+        obj.insert("amount".into(), to_amount_number(d)?);
     }
 
     // Tip amount
     if let Some(ref raw) = args.tip_amount {
         let d = parse_amount(raw)?;
-        obj.insert("tipAmount".into(), to_amount_number(d));
+        obj.insert("tipAmount".into(), to_amount_number(d)?);
     }
 
     // Tip rate — parse_rate allows up to 4 decimal places (rates are not money).
     // NOTE: transactions l2_tax_rate could adopt parse_rate later (not changed here).
     if let Some(ref raw) = args.tip_rate {
         let d = parse_rate(raw)?;
-        obj.insert("tipRate".into(), to_amount_number(d));
+        obj.insert("tipRate".into(), to_amount_number(d)?);
     }
 
     // Only-present optional string fields

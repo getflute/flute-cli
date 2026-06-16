@@ -931,7 +931,7 @@ async fn dispatch_transactions(
             amount,
         } => {
             let amt = amount.as_deref().map(parse_amount).transpose()?;
-            let body = build_capture_body(&transaction_id, amt);
+            let body = build_capture_body(&transaction_id, amt)?;
             let (p, api) = build_client(profile)?;
             let result = api.capture(body).await?;
             render_transaction(&result, output_fmt, &p.name)
@@ -948,7 +948,7 @@ async fn dispatch_transactions(
             card_data_source,
         } => {
             let amt = amount.as_deref().map(parse_amount).transpose()?;
-            let body = build_refund_body(&transaction_id, amt, card_data_source);
+            let body = build_refund_body(&transaction_id, amt, card_data_source)?;
             let (p, api) = build_client(profile)?;
             let result = api.refund(body).await?;
             render_transaction(&result, output_fmt, &p.name)
@@ -966,7 +966,7 @@ async fn dispatch_transactions(
             tip_amount,
         } => {
             let tip = parse_amount(&tip_amount)?;
-            let body = build_tip_adjust_body(&transaction_id, tip);
+            let body = build_tip_adjust_body(&transaction_id, tip)?;
             let (p, api) = build_client(profile)?;
             let result = api.tip_adjust(body).await?;
             render_transaction(&result, output_fmt, &p.name)
@@ -1063,8 +1063,14 @@ pub fn run() -> anyhow::Result<()> {
         let should_check = should_run_update_check(&cmd, output_fmt);
 
         let dispatch_result = match cmd {
-            // `Completion` handled above, before runtime creation.
-            cli::Command::Completion { .. } => unreachable!(),
+            // `Completion` is handled above, before runtime creation, so this
+            // arm is unreachable by construction. Surface a loud error rather
+            // than panicking (no-panic policy) or silently succeeding — if a
+            // future refactor routes completion here, this fails visibly
+            // instead of emitting nothing and exiting 0.
+            cli::Command::Completion { .. } => {
+                Err(anyhow::anyhow!("completion is handled before dispatch"))
+            }
             cli::Command::Update => update::run().await,
             cli::Command::Auth(cli::AuthCommand::Login) => cli::auth::login(&profile).await,
             cli::Command::Auth(cli::AuthCommand::Status) => {

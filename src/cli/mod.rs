@@ -32,10 +32,6 @@ pub struct Cli {
     #[arg(long, global = true, value_enum, env = "FLUTE_OUTPUT")]
     pub output: Option<OutputFormat>,
 
-    /// ISV merchant context for commands whose endpoints accept it.
-    #[arg(long, global = true)]
-    pub merchant_id: Option<String>,
-
     /// Print full HTTP request/response (sensitive fields redacted) to stderr.
     #[arg(long, global = true)]
     pub debug: bool,

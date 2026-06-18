@@ -85,6 +85,7 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 - `settle` takes `--payment-processor-id` (**batch-level** — settles the processor's open batch, NOT a single txn).
 - `list` flags: `--limit`(→pageSize), `--page`, `--unsettled`; `--status`/`--from`/`--to` filter the returned page **client-side** (not server params).
 - `inspect <id>` is a rich client-composed view; reads the API's `availableOperations` (accepts operation objects with a `type` field **or** bare strings).
+- **Reading current state:** derive a transaction's current state **only** from `status`/`statusId` plus `availableOperations` — **not** from `transactionType` or `operationType`. Both are sticky to the *original* operation: after a `void`, the record still reads `transactionType:"Sale"` and `operationType:"PayNow"`, while `status` becomes `"Voided"` and `availableOperations` becomes `[]`. `void`/`refund` update `status` in place (same `transactionId`); the API exposes **no** `lastOperationType`, `voidedAt`/`refundedAt`, or operations-history field, and `transactionDateTime` stays the original timestamp. Rule of thumb: `availableOperations` lists what you *can* still do, `status` tells you what *happened*, `transactionType` only tells you what it originally *was*.
 
 ### ACH — `flute ach …`
 `debit`, `credit`, `void <id>`, `refund <id>`.

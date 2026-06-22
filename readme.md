@@ -143,6 +143,64 @@ Errors (non-zero exit) are also written to **stdout** as structured JSON when `-
 
 ---
 
+## Logging & debugging
+
+`flute` writes all logs to **stderr**; command output goes to stdout. That split holds even with `--debug` on, so `flute --debug --output json …` still emits a clean, parseable JSON document on stdout.
+
+By default only warnings and a few brief notices are logged (for example, a one-line note when a stale token triggers the automatic single 401 retry). Successful commands are otherwise quiet on stderr apart from the production banner.
+
+### `--debug`
+
+The global `--debug` flag prints full HTTP request/response traces — method, URL, status, and body — to stderr:
+
+```sh
+flute --debug ping
+flute --debug transactions get <txn-id>
+```
+
+**Sensitive fields are masked before anything is logged:**
+
+| Field | How it appears in logs |
+|---|---|
+| Card / bank account numbers (`cardNumber`, `accountNumber`, `routingNumber`, `pan`) | masked to the last 4 — e.g. `************1111` |
+| CVV / security code (`securityCode`, `cvv`, `cvc`) | removed entirely — `***` |
+| Bearer token | never logged (it is sent as a header, never part of the body trace) |
+
+> Masking lowers the risk but does not eliminate it: a `--debug` trace still reveals amounts, the last 4 digits, and request metadata. Don't capture `--debug` output into shared or long-lived logs when operating on `production`.
+
+### `RUST_LOG` — fine-grained control
+
+Setting `RUST_LOG` overrides the built-in filters entirely and accepts the standard [`EnvFilter` syntax](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html). The same field masking is applied to `flute`'s own traces no matter how the level is set:
+
+```sh
+# Only flute's own HTTP traces, nothing from dependency crates
+RUST_LOG=flute_cli=debug flute ping
+
+# Add connection / TLS / DNS detail from the HTTP stack
+RUST_LOG=flute_cli=debug,reqwest=debug,hyper=debug flute ping
+```
+
+### Filter presets
+
+| Mode | Effective filter |
+|---|---|
+| default | `warn,flute_cli=info` |
+| `--debug` | `debug,flute_cli=debug,reqwest=debug,hyper=info` |
+| `RUST_LOG` set | your value (overrides both of the above) |
+
+### Quick reference
+
+| Goal | Command |
+|---|---|
+| See the API's response when a command fails | `flute --debug <cmd>` → read the `HTTP response` line on stderr |
+| Get a structured error for a script | `--output json` → error envelope (kind / message / status / correlation_id) on stdout |
+| Diagnose TLS / DNS / connection problems | `RUST_LOG=flute_cli=debug,reqwest=debug,hyper=debug flute ping` |
+| Confirm which environment/URL is being hit | `flute --debug ping` (the request URL is in the trace) |
+
+Command errors are always printed to stderr (and to stdout as JSON under `--output json`) regardless of the log level.
+
+---
+
 ## Shell completions
 
 Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`.

@@ -32,7 +32,8 @@ pub struct Cli {
     #[arg(long, global = true, value_enum, env = "FLUTE_OUTPUT")]
     pub output: Option<OutputFormat>,
 
-    /// Print full HTTP request/response (sensitive fields redacted) to stderr.
+    /// Print HTTP request/response traces to stderr. Card and bank-account
+    /// numbers are masked to the last 4 digits; CVV/security codes are removed.
     #[arg(long, global = true)]
     pub debug: bool,
 

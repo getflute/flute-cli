@@ -19,6 +19,91 @@ use tracing::{debug, info};
 
 const JSON: &str = "application/json";
 
+/// Keys whose values are sensitive authentication data that must NEVER appear
+/// in logs in any form. PCI-DSS forbids storing/logging the card verification
+/// value (CVV/CVC) at all, so these are replaced wholesale rather than masked.
+fn is_full_secret_key(lower_key: &str) -> bool {
+    matches!(
+        lower_key,
+        "securitycode" | "cvv" | "cvc" | "cvv2" | "cardverificationvalue"
+    )
+}
+
+/// Keys carrying a full card/bank account identifier. These are logged masked
+/// to the last four characters (PCI-DSS permits showing at most the last four
+/// digits of a PAN), which keeps logs useful for support without exposing the
+/// full number.
+fn is_account_like_key(lower_key: &str) -> bool {
+    matches!(
+        lower_key,
+        "cardnumber" | "accountnumber" | "pan" | "routingnumber"
+    )
+}
+
+/// Mask a string value to its last four characters (UTF-8 safe). Values of four
+/// or fewer characters are fully redacted so short inputs aren't echoed whole.
+/// Non-string values are returned unchanged.
+fn mask_last4(value: &serde_json::Value) -> serde_json::Value {
+    match value.as_str() {
+        Some(s) => {
+            let chars: Vec<char> = s.chars().collect();
+            if chars.len() > 4 {
+                let masked: String = std::iter::repeat_n('*', chars.len() - 4)
+                    .chain(chars[chars.len() - 4..].iter().copied())
+                    .collect();
+                serde_json::Value::String(masked)
+            } else {
+                serde_json::Value::String("***".into())
+            }
+        }
+        None => value.clone(),
+    }
+}
+
+/// Recursively redact sensitive fields in a JSON value so it is safe to log.
+/// Secrets (CVV) become `"***"`; account/card numbers are masked to last-4;
+/// everything else is preserved. Recurses through objects and arrays so nested
+/// payloads are covered too.
+fn redact_value(value: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            let redacted = map
+                .iter()
+                .map(|(k, v)| {
+                    let lk = k.to_ascii_lowercase();
+                    let rv = if is_full_secret_key(&lk) {
+                        Value::String("***".into())
+                    } else if is_account_like_key(&lk) {
+                        mask_last4(v)
+                    } else {
+                        redact_value(v)
+                    };
+                    (k.clone(), rv)
+                })
+                .collect();
+            Value::Object(redacted)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(redact_value).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Render a request body for debug logging with sensitive fields masked.
+fn redact_for_log(body: &serde_json::Value) -> String {
+    redact_value(body).to_string()
+}
+
+/// Render a response body (raw server text) for debug logging. When the text
+/// parses as JSON, sensitive fields are masked; otherwise the text is returned
+/// unchanged (non-JSON error pages don't carry structured card data).
+fn redact_text_for_log(text: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(text) {
+        Ok(v) => redact_value(&v).to_string(),
+        Err(_) => text.to_string(),
+    }
+}
+
 #[derive(Clone)]
 pub struct ApiClient {
     pub base_url: String,
@@ -88,12 +173,12 @@ impl ApiClient {
         body: Option<serde_json::Value>,
     ) -> Result<R, ApiError> {
         let url = format!("{}{}", self.base_url, path);
-        // Body is logged at debug level in full; bearer token is intentionally not logged.
-        let body_for_log = body.as_ref().map(|b| b.to_string());
-        debug!(method = %method, url = %url, body = ?body_for_log, "HTTP request");
+        // Body is logged at debug level with sensitive fields masked (see
+        // redact_for_log); the bearer token lives in a header and is never logged.
+        debug!(method = %method, url = %url, body = ?body.as_ref().map(redact_for_log), "HTTP request");
 
         let (mut status, mut text) = self.issue(&method, &url, body.as_ref()).await?;
-        debug!(method = %method, url = %url, status = status.as_u16(), body = %text, "HTTP response");
+        debug!(method = %method, url = %url, status = status.as_u16(), body = %redact_text_for_log(&text), "HTTP response");
 
         // Reactive token refresh: a 401 may mean our cached token is stale
         // (clock skew, server restart, revocation). Drop the cache, fetch a
@@ -102,7 +187,7 @@ impl ApiClient {
             info!("HTTP 401 — invalidating cached token and retrying once");
             self.tokens.invalidate().await;
             let (s2, t2) = self.issue(&method, &url, body.as_ref()).await?;
-            debug!(method = %method, url = %url, status = s2.as_u16(), body = %t2, "HTTP response (after refresh)");
+            debug!(method = %method, url = %url, status = s2.as_u16(), body = %redact_text_for_log(&t2), "HTTP response (after refresh)");
             status = s2;
             text = t2;
         }
@@ -125,8 +210,7 @@ impl ApiClient {
         body: serde_json::Value,
     ) -> Result<(), ApiError> {
         let url = format!("{}{}", self.base_url, path);
-        let body_for_log = body.to_string();
-        debug!(method = %method, url = %url, body = %body_for_log, "HTTP request");
+        debug!(method = %method, url = %url, body = %redact_for_log(&body), "HTTP request");
 
         let (mut status, mut text) = self.issue(&method, &url, Some(&body)).await?;
 
@@ -144,7 +228,7 @@ impl ApiClient {
         } else {
             debug!(
                 method = %method, url = %url, status = status.as_u16(),
-                body = %text,
+                body = %redact_text_for_log(&text),
                 "HTTP response"
             );
             Err(from_aspnet(status.as_u16(), &text))
@@ -171,7 +255,7 @@ impl ApiClient {
         } else {
             debug!(
                 method = %method, url = %url, status = status.as_u16(),
-                body = %text,
+                body = %redact_text_for_log(&text),
                 "HTTP response"
             );
             Err(from_aspnet(status.as_u16(), &text))
@@ -328,5 +412,215 @@ mod tests {
             result.is_ok(),
             "send_body_discard must succeed on empty 200 body, got: {result:?}"
         );
+    }
+
+    // ── Redaction of sensitive fields in debug logs ─────────────────────────
+    //
+    // `--debug` logs HTTP request/response bodies. Card PANs, CVVs, and bank
+    // account numbers MUST be masked before they reach stderr (PCI-DSS: never
+    // log full PAN, never store/log CVV). These tests pin that contract.
+
+    use super::{redact_for_log, redact_text_for_log};
+    use serde_json::json;
+
+    #[test]
+    fn redact_for_log_masks_pan_keeping_last4() {
+        let body = json!({ "accountNumber": "4111111111111111" });
+        let out = redact_for_log(&body);
+        assert!(
+            !out.contains("4111111111111111"),
+            "full PAN must not appear in log output: {out}"
+        );
+        assert!(
+            out.contains("************1111"),
+            "PAN last-4 expected: {out}"
+        );
+    }
+
+    #[test]
+    fn redact_for_log_masks_card_number_field() {
+        let body = json!({ "cardNumber": "5555444433332222" });
+        let out = redact_for_log(&body);
+        assert!(!out.contains("5555444433332222"), "full PAN leaked: {out}");
+        assert!(out.contains("************2222"), "expected last-4: {out}");
+    }
+
+    #[test]
+    fn redact_for_log_fully_redacts_cvv() {
+        let body = json!({ "securityCode": "123" });
+        let out = redact_for_log(&body);
+        assert!(
+            !out.contains("\"123\""),
+            "CVV value must be fully removed, not masked-with-last-4: {out}"
+        );
+        assert!(out.contains("\"***\""), "CVV should become ***: {out}");
+    }
+
+    #[test]
+    fn redact_for_log_masks_routing_number() {
+        let body = json!({ "routingNumber": "021000021" });
+        let out = redact_for_log(&body);
+        assert!(!out.contains("021000021"), "full routing leaked: {out}");
+    }
+
+    #[test]
+    fn redact_for_log_preserves_non_sensitive_fields() {
+        let body = json!({
+            "amount": "10.00",
+            "currencyId": 840,
+            "customerId": "cust-001",
+            "cardDataSource": "Keyed"
+        });
+        let out = redact_for_log(&body);
+        assert!(out.contains("10.00"), "amount must survive: {out}");
+        assert!(out.contains("840"), "currencyId must survive: {out}");
+        assert!(out.contains("cust-001"), "customerId must survive: {out}");
+        assert!(out.contains("Keyed"), "cardDataSource must survive: {out}");
+    }
+
+    #[test]
+    fn redact_for_log_recurses_into_nested_objects_and_arrays() {
+        let body = json!({
+            "paymentMethods": [
+                { "card": { "cardNumber": "4111111111111111", "securityCode": "999" } }
+            ]
+        });
+        let out = redact_for_log(&body);
+        assert!(
+            !out.contains("4111111111111111"),
+            "nested PAN leaked: {out}"
+        );
+        assert!(!out.contains("\"999\""), "nested CVV leaked: {out}");
+    }
+
+    #[test]
+    fn redact_for_log_short_account_does_not_reveal_value() {
+        // A value of <= 4 chars must not be echoed verbatim under last-4 masking.
+        let body = json!({ "accountNumber": "12" });
+        let out = redact_for_log(&body);
+        assert!(!out.contains("\"12\""), "short account leaked: {out}");
+        assert!(out.contains("\"***\""), "short value should be ***: {out}");
+    }
+
+    #[test]
+    fn redact_for_log_is_case_insensitive_on_keys() {
+        let body = json!({ "AccountNumber": "4111111111111111", "CVV": "123" });
+        let out = redact_for_log(&body);
+        assert!(!out.contains("4111111111111111"), "PAN leaked: {out}");
+        assert!(!out.contains("\"123\""), "CVV leaked: {out}");
+    }
+
+    #[test]
+    fn redact_text_for_log_redacts_json_response() {
+        let text = r#"{"accountNumber":"4111111111111111","securityCode":"123"}"#;
+        let out = redact_text_for_log(text);
+        assert!(!out.contains("4111111111111111"), "PAN leaked: {out}");
+        assert!(!out.contains("\"123\""), "CVV leaked: {out}");
+    }
+
+    #[test]
+    fn redact_text_for_log_passes_through_non_json() {
+        let text = "Internal Server Error (not json)";
+        let out = redact_text_for_log(text);
+        assert_eq!(out, text, "non-JSON text must be logged unchanged");
+    }
+
+    /// End-to-end guard: drive a real request through `send()` with a capturing
+    /// tracing subscriber and assert the raw PAN never reaches the log sink.
+    /// This protects against a future log site bypassing `redact_for_log`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn debug_logging_masks_pan_through_the_real_send_path() {
+        use std::io::Write;
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::fmt::MakeWriter;
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        struct BufGuard(Arc<Mutex<Vec<u8>>>);
+        impl Write for BufGuard {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'a> MakeWriter<'a> for Buf {
+            type Writer = BufGuard;
+            fn make_writer(&'a self) -> Self::Writer {
+                BufGuard(self.0.clone())
+            }
+        }
+
+        let buf = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .with_writer(Buf(buf.clone()))
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/redact-probe"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({ "panMask": "************1111" })),
+            )
+            .mount(&server)
+            .await;
+
+        let api = super::test_client(server.uri());
+        let _: Result<serde_json::Value, _> = api
+            .send(
+                reqwest::Method::POST,
+                "/redact-probe",
+                Some(json!({ "accountNumber": "4111111111111111", "securityCode": "123" })),
+            )
+            .await;
+
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        // Sanity: the request was actually traced, so the asserts below aren't vacuous.
+        assert!(
+            logged.contains("HTTP request"),
+            "expected a request trace to be captured, got: {logged}"
+        );
+        // The full PAN must never reach the log sink.
+        assert!(
+            !logged.contains("4111111111111111"),
+            "full PAN leaked into debug logs: {logged}"
+        );
+        // Masked PAN present → proves redaction ran (not that logging was skipped).
+        assert!(
+            logged.contains("************1111"),
+            "expected masked PAN in logs: {logged}"
+        );
+        // CVV redacted to *** (the only field here that maps to ***).
+        assert!(
+            logged.contains("***"),
+            "expected CVV to be redacted to ***: {logged}"
+        );
+    }
+
+    #[test]
+    fn redact_for_log_on_realistic_sale_body_hides_pan_and_cvv() {
+        // Mirrors the field names build_card_txn_body emits (transactions.rs).
+        let body = json!({
+            "amount": "10.00",
+            "cardDataSource": "Keyed",
+            "accountNumber": "4111111111111111",
+            "securityCode": "123",
+            "expirationMonth": 12,
+            "expirationYear": 2027
+        });
+        let out = redact_for_log(&body);
+        assert!(!out.contains("4111111111111111"), "PAN leaked: {out}");
+        assert!(!out.contains("\"123\""), "CVV leaked: {out}");
+        // Non-sensitive structure should remain for debugging value.
+        assert!(out.contains("10.00") && out.contains("Keyed"));
     }
 }

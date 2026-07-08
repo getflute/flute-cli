@@ -20,13 +20,68 @@ use tracing::{debug, info};
 const JSON: &str = "application/json";
 
 /// Keys whose values are sensitive authentication data that must NEVER appear
-/// in logs in any form. PCI-DSS forbids storing/logging the card verification
-/// value (CVV/CVC) at all, so these are replaced wholesale rather than masked.
+/// in logs in any form — replaced wholesale with `"***"` rather than masked.
+///
+/// Covers two families:
+///   * Card verification values (CVV/CVC) — PCI-DSS forbids logging these at all.
+///   * Auth credentials and bearer tokens (client secrets, OAuth/access/refresh
+///     tokens, JWTs, passwords, API keys). A secret's last four characters are
+///     still leaked entropy, so these are fully redacted, never last-4 masked.
+///
+/// Matching is by exact name first, then a conservative substring safety-net so
+/// unknown/compound field names (e.g. `merchantSecret`, `xAuthToken`) are still
+/// caught. Over-redacting a debug log is far cheaper than leaking a credential.
 fn is_full_secret_key(lower_key: &str) -> bool {
-    matches!(
-        lower_key,
-        "securitycode" | "cvv" | "cvc" | "cvv2" | "cardverificationvalue"
-    )
+    const EXACT: &[&str] = &[
+        // Card verification values.
+        "securitycode",
+        "cvv",
+        "cvc",
+        "cvv2",
+        "cardverificationvalue",
+        // Auth credentials and bearer tokens.
+        "clientsecret",
+        "client_secret",
+        "secret",
+        "password",
+        "passwd",
+        "pwd",
+        "token",
+        "accesstoken",
+        "access_token",
+        "refreshtoken",
+        "refresh_token",
+        "idtoken",
+        "id_token",
+        "jwt",
+        "bearer",
+        "apikey",
+        "api_key",
+        "apisecret",
+        "api_secret",
+        "authorization",
+        "auth",
+        "privatekey",
+        "private_key",
+        "sessiontoken",
+        "session_token",
+    ];
+    if EXACT.contains(&lower_key) {
+        return true;
+    }
+    // High-signal stems only, to limit over-redaction of benign keys.
+    const STEMS: &[&str] = &[
+        "secret",
+        "password",
+        "passwd",
+        "token",
+        "jwt",
+        "apikey",
+        "authorization",
+        "credential",
+        "privatekey",
+    ];
+    STEMS.iter().any(|stem| lower_key.contains(stem))
 }
 
 /// Keys carrying a full card/bank account identifier. These are logged masked
@@ -95,12 +150,15 @@ fn redact_for_log(body: &serde_json::Value) -> String {
 }
 
 /// Render a response body (raw server text) for debug logging. When the text
-/// parses as JSON, sensitive fields are masked; otherwise the text is returned
-/// unchanged (non-JSON error pages don't carry structured card data).
+/// parses as JSON, sensitive fields are masked. Non-JSON bodies are never echoed
+/// verbatim — a plaintext token/JWT or an error page reflecting a secret would
+/// otherwise leak wholesale — so only a byte-count placeholder is logged. (The
+/// full error text still reaches the user via `from_aspnet`; this only governs
+/// what the `--debug` trace writes to stderr.)
 fn redact_text_for_log(text: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(text) {
         Ok(v) => redact_value(&v).to_string(),
-        Err(_) => text.to_string(),
+        Err(_) => format!("<non-JSON body suppressed ({} bytes)>", text.len()),
     }
 }
 
@@ -519,10 +577,23 @@ mod tests {
     }
 
     #[test]
-    fn redact_text_for_log_passes_through_non_json() {
+    fn redact_text_for_log_suppresses_non_json() {
+        // Non-JSON bodies are never echoed verbatim: a bare token/JWT/plaintext
+        // response must not reach the log. Only a byte-count placeholder is kept.
         let text = "Internal Server Error (not json)";
         let out = redact_text_for_log(text);
-        assert_eq!(out, text, "non-JSON text must be logged unchanged");
+        assert!(
+            !out.contains("Internal Server Error"),
+            "non-JSON body must be suppressed, not echoed: {out}"
+        );
+        assert!(
+            out.contains("non-JSON body suppressed"),
+            "expected suppression placeholder: {out}"
+        );
+        assert!(
+            out.contains(&text.len().to_string()),
+            "placeholder should note the byte count: {out}"
+        );
     }
 
     /// End-to-end guard: drive a real request through `send()` with a capturing
@@ -622,5 +693,101 @@ mod tests {
         assert!(!out.contains("\"123\""), "CVV leaked: {out}");
         // Non-sensitive structure should remain for debugging value.
         assert!(out.contains("10.00") && out.contains("Keyed"));
+    }
+
+    // ── Expanded secret redaction (auth credentials, tokens, JWTs) ──────────
+    //
+    // Card PAN/CVV are not the only secrets that flow through logged bodies:
+    // token-create returns `clientSecret`, tap-to-pay returns `jwt`, and other
+    // endpoints can carry bearer/access tokens, passwords, and API keys. These
+    // must be fully redacted (never masked-with-last-4 — a secret's last four
+    // chars are still leaked entropy).
+
+    #[test]
+    fn redact_for_log_masks_client_secret() {
+        let body = json!({ "clientId": "client-abc", "clientSecret": "s3cr3t-shown-once" });
+        let out = redact_for_log(&body);
+        assert!(
+            !out.contains("s3cr3t-shown-once"),
+            "clientSecret leaked: {out}"
+        );
+        assert!(out.contains("\"***\""), "clientSecret should be ***: {out}");
+        assert!(
+            out.contains("client-abc"),
+            "clientId is not secret and must survive: {out}"
+        );
+    }
+
+    #[test]
+    fn redact_for_log_masks_jwt_and_token_fields() {
+        let body = json!({
+            "jwt": "eyJhbGciOiJI.payload.sig",
+            "token": "tok-123",
+            "accessToken": "at-456",
+            "refreshToken": "rt-789"
+        });
+        let out = redact_for_log(&body);
+        for leaked in ["eyJhbGciOiJI.payload.sig", "tok-123", "at-456", "rt-789"] {
+            assert!(
+                !out.contains(leaked),
+                "secret value leaked ({leaked}): {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn redact_for_log_masks_password_and_api_key() {
+        let body = json!({ "password": "hunter2", "apiKey": "AK-live-999" });
+        let out = redact_for_log(&body);
+        assert!(!out.contains("hunter2"), "password leaked: {out}");
+        assert!(!out.contains("AK-live-999"), "apiKey leaked: {out}");
+    }
+
+    #[test]
+    fn redact_for_log_substring_catches_compound_secret_keys() {
+        // Unknown/compound field names are caught by the substring safety-net.
+        let body = json!({ "merchantSecret": "ms-abc", "xAuthToken": "xat-def" });
+        let out = redact_for_log(&body);
+        assert!(
+            !out.contains("ms-abc"),
+            "compound *secret* key leaked: {out}"
+        );
+        assert!(
+            !out.contains("xat-def"),
+            "compound *token* key leaked: {out}"
+        );
+    }
+
+    #[test]
+    fn redact_for_log_preserves_benign_fields_after_expansion() {
+        // Regression guard: expanding the secret set must not redact ordinary
+        // identifiers/amounts that carry no credentials.
+        let body = json!({
+            "amount": "10.00",
+            "currencyId": 840,
+            "customerId": "cust-001",
+            "merchantId": "merch-002",
+            "cardDataSource": "Keyed"
+        });
+        let out = redact_for_log(&body);
+        for kept in ["10.00", "840", "cust-001", "merch-002", "Keyed"] {
+            assert!(
+                out.contains(kept),
+                "benign field '{kept}' must survive: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn redact_text_for_log_masks_client_secret_in_json_response() {
+        // The token-create response body is logged on the response path; the
+        // one-shot clientSecret must be masked while clientId stays visible.
+        let text = r#"{"clientId":"client-abc","clientSecret":"s3cr3t-shown-once"}"#;
+        let out = redact_text_for_log(text);
+        assert!(
+            !out.contains("s3cr3t-shown-once"),
+            "clientSecret leaked: {out}"
+        );
+        assert!(out.contains("client-abc"), "clientId must survive: {out}");
     }
 }

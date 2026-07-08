@@ -213,4 +213,42 @@ mod tests {
             _ => panic!("expected Api"),
         }
     }
+
+    #[test]
+    fn body_is_used_verbatim_when_title_and_details_missing() {
+        // Valid ASP.NET JSON that carries a correlation id but no Title and no
+        // Details: the parser has no human message to build, so it must fall
+        // back to the raw body rather than emitting an empty message.
+        let body = r#"{"correlationId":"c-1"}"#;
+        match from_aspnet(500, body) {
+            ApiError::Api {
+                status,
+                correlation_id,
+                message,
+            } => {
+                assert_eq!(status, 500);
+                assert_eq!(correlation_id.as_deref(), Some("c-1"));
+                assert_eq!(message, body, "raw body preserved as the message");
+            }
+            _ => panic!("expected Api"),
+        }
+    }
+
+    #[test]
+    fn empty_field_errors_map_appends_nothing() {
+        // The `Errors` map is present but every field's message list is empty,
+        // so `flatten_errors` yields nothing and the core message is unchanged
+        // (no dangling ": " suffix).
+        let body = r#"{"Title":"X","Errors":{"CurrencyId":[]}}"#;
+        match from_aspnet(400, body) {
+            ApiError::Api { message, .. } => {
+                assert_eq!(message, "X");
+                assert!(
+                    !message.contains("CurrencyId"),
+                    "empty field lists must not be appended: {message}"
+                );
+            }
+            _ => panic!("expected Api"),
+        }
+    }
 }

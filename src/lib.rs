@@ -1320,4 +1320,41 @@ mod tests {
         assert!(ej.message.contains("sandbox"));
         assert!(ej.message.contains("flute auth login"));
     }
+
+    // ── parse_txn_money ──────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_txn_money_parses_all_three_fields() {
+        // All three strings use `parse_amount` (≤ 2 decimal places), so the L2
+        // rate here is a plain 2-dp value.
+        let m = parse_txn_money("10.00", Some("2.50"), Some("8.25")).unwrap();
+        assert_eq!(m.amount.to_string(), "10.00");
+        assert_eq!(m.tip_amount.unwrap().to_string(), "2.50");
+        assert_eq!(m.l2_tax_rate.unwrap().to_string(), "8.25");
+    }
+
+    #[test]
+    fn parse_txn_money_leaves_optional_fields_none() {
+        let m = parse_txn_money("10.00", None, None).unwrap();
+        assert_eq!(m.amount.to_string(), "10.00");
+        assert!(m.tip_amount.is_none());
+        assert!(m.l2_tax_rate.is_none());
+    }
+
+    #[test]
+    fn parse_txn_money_rejects_invalid_amount() {
+        assert!(parse_txn_money("notanumber", None, None).is_err());
+    }
+
+    #[test]
+    fn parse_txn_money_propagates_invalid_tip() {
+        // Negative tip is rejected by `parse_amount` and must bubble up.
+        assert!(parse_txn_money("10.00", Some("-1.00"), None).is_err());
+    }
+
+    #[test]
+    fn parse_txn_money_propagates_invalid_l2_rate() {
+        // Scale > 2 is rejected by `parse_amount` and must bubble up.
+        assert!(parse_txn_money("10.00", None, Some("1.005")).is_err());
+    }
 }

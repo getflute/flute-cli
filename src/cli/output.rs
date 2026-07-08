@@ -305,4 +305,19 @@ mod tests {
         assert_eq!(env.status, Some(500));
         assert_eq!(env.correlation_id.as_deref(), Some("xyz"));
     }
+
+    #[test]
+    fn error_json_decode_variant_uses_decode_kind_no_status() {
+        let e: anyhow::Error = ApiError::Decode("bad json".into()).into();
+        let env = ErrorJson::from_anyhow(&e);
+        assert_eq!(env.kind, "decode");
+        assert_eq!(env.message, "bad json");
+        assert!(env.status.is_none());
+        assert!(env.correlation_id.is_none());
+    }
+
+    #[test]
+    fn fit_returns_empty_for_zero_width() {
+        assert_eq!(fit("hello", 0), "");
+    }
 }

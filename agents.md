@@ -139,11 +139,10 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 
 ## Idempotency
 
-| Safe to retry | NOT safe to retry (creates/moves money or a resource) |
+| Safe to retry | NOT safe to retry (creates/moves money, or errors on repeat) |
 |---|---|
 | all `get`/`list`/`status`/`inspect`/`methods`/`payments` (pure reads) | `transactions sale`/`auth`, `ach debit`/`credit`, `transactions capture`/`refund`, `pos create`, `customers create`, `customers add-card`/`add-ach`, `subscriptions create`, `tokens create` |
-| `void`/`cancel`/`terminate` (404 on repeat = done) | |
-| `delete`/`remove-method`/`tokens revoke` (404 idempotent) | |
+| `delete`/`remove-method`/`tokens revoke` — the CLI maps a repeat **404** to success, so re-running is a safe no-op | `void`/`cancel`/`terminate` — **not** idempotent: the CLI does not swallow the repeat, so it surfaces the server's error. E.g. `subscriptions terminate` on an already-terminated subscription returns **400 "already Terminated"** (exit 3), *not* a 404/no-op. Reconcile with `get`/`list` first. |
 
 On an ambiguous timeout for a non-retryable op, **`list`/`get` to reconcile before reissuing**.
 Use a unique `--reference-id` on `transactions`/`pos` to leverage server-side duplicate control.

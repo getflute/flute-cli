@@ -538,8 +538,12 @@ async fn dispatch_devices(
         }
         DevicesCommand::TtpActivate { id } => {
             let (p, api) = build_client(profile)?;
-            let result = api.ttp_activate(&id).await?;
-            render_device(&result, output_fmt, &p.name)
+            // activate returns an empty HTTP 200; re-fetch the device so we can
+            // render the canonical post-activation state (tapToPayEnabled/
+            // tapToPayStatus) rather than an empty body. (ARISE-4505 BUG-09.)
+            api.ttp_activate(&id).await?;
+            let device = api.get_device(&id).await?;
+            render_device(&device, output_fmt, &p.name)
         }
     }
 }

@@ -1,9 +1,10 @@
 //! `ApiClient` endpoint methods for the Devices API group
 //! (`/pay-api/v1/devices/*`).
 //!
-//! Each method calls `self.send(…)` or `self.send(POST,path,None)` from the core
-//! in `mod.rs`.  The bodyless POST (`ttp_activate`) uses `send(POST, path, None)`
-//! to send Content-Length: 0 as required by the Flute API.
+//! Each method calls `self.send(…)` from the core in `mod.rs`. The bodyless
+//! POST (`ttp_activate`) uses `send_no_body(POST, path)` so it still sends
+//! Content-Length: 0 as the Flute API requires, while tolerating the empty
+//! HTTP 200 body the activate endpoint returns.
 
 use crate::api::client::ApiClient;
 use crate::api::error::ApiError;
@@ -46,10 +47,16 @@ impl ApiClient {
         .await
     }
 
-    /// POST `/pay-api/v1/devices/{id}/tap-to-pay/activate` — activate Tap-to-Pay (bodyless).
-    pub async fn ttp_activate(&self, id: &str) -> Result<serde_json::Value, ApiError> {
+    /// POST `/pay-api/v1/devices/{id}/tap-to-pay/activate` — activate Tap-to-Pay.
+    ///
+    /// Bodyless request. The live API responds HTTP 200 with an **empty** body,
+    /// so this uses `send_no_body` (which discards the success body) rather than
+    /// `send::<Value>` — otherwise an empty 200 fails to decode ("EOF while
+    /// parsing a value"). Callers that need the post-activation device state
+    /// should issue a subsequent `get_device`. (ARISE-4505 BUG-09.)
+    pub async fn ttp_activate(&self, id: &str) -> Result<(), ApiError> {
         let path = format!("/pay-api/v1/devices/{id}/tap-to-pay/activate");
-        self.send(Method::POST, &path, None).await
+        self.send_no_body(Method::POST, &path).await
     }
 }
 
@@ -169,20 +176,41 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/pay-api/v1/devices/dev-001/tap-to-pay/activate"))
             .and(header("authorization", "Bearer test-token"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "activated": true,
-                "deviceId": "DEVICE-ABC-123"
-            })))
+            .respond_with(ResponseTemplate::new(200))
             .mount(&server)
             .await;
 
         let api = test_client(server.uri());
-        let result = api.ttp_activate("dev-001").await.unwrap();
-        assert_eq!(result["activated"], true);
+        let result = api.ttp_activate("dev-001").await;
+        assert!(result.is_ok(), "activate should succeed, got: {result:?}");
 
         // Verify no body was sent (Content-Length: 0 only)
         let received = server.received_requests().await.unwrap();
         assert_eq!(received.len(), 1);
         assert!(received[0].body.is_empty());
+    }
+
+    /// Regression (ARISE-4505 BUG-09): the live activate endpoint responds with
+    /// HTTP 200 and an EMPTY body. `send::<Value>` previously failed to decode it
+    /// ("EOF while parsing a value at line 1 column 0") even though activation
+    /// succeeded. `ttp_activate` must tolerate an empty 200 the same way
+    /// `update_customer` does.
+    #[tokio::test]
+    async fn ttp_activate_tolerates_empty_200_body() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/pay-api/v1/devices/dev-001/tap-to-pay/activate"))
+            .and(header("authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200)) // empty body — mirrors live API
+            .mount(&server)
+            .await;
+
+        let api = test_client(server.uri());
+        let result = api.ttp_activate("dev-001").await;
+        assert!(
+            result.is_ok(),
+            "ttp_activate must succeed on an empty 200 body, got: {result:?}"
+        );
     }
 }

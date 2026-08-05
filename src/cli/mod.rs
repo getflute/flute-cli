@@ -95,7 +95,7 @@ pub enum Command {
 pub enum AuthCommand {
     /// Prompt for client_id + client_secret and store them in the OS keychain.
     Login,
-    /// Show active profile, environment, and token status.
+    /// Show active profile, environment, and live authentication status.
     Status,
     /// Set the default profile in ~/.flute/config.toml.
     Switch { profile: String },
@@ -1081,12 +1081,16 @@ pub enum SubscriptionsCommand {
         #[arg(long, required = true)]
         number_of_payments: u32,
 
-        /// Payment frequency (default 1 = every 1 unit). Maps to `paymentFrequency`.
+        /// Payment frequency (default 1). Maps to `paymentFrequency`. The valid
+        /// values depend on `--interval`: for `week`/`month` this is the number
+        /// of units between payments (1 = every unit); for `--interval day` the
+        /// API only accepts 7, 15, or 30 (a plain `1` is rejected).
         #[arg(long, default_value_t = 1)]
         payment_frequency: u32,
 
         /// Payment interval: `day`, `week`, or `month` (default `month`).
-        /// Maps to `paymentFrequencyUnit` (1=Day, 2=Week, 3=Month).
+        /// Maps to `paymentFrequencyUnit` (1=Day, 2=Week, 3=Month). For `day`,
+        /// pair with `--payment-frequency 7|15|30`.
         #[arg(long, value_enum, default_value = "month")]
         interval: subscriptions::Interval,
 
@@ -1099,7 +1103,9 @@ pub enum SubscriptionsCommand {
         #[arg(long, default_value = "127.0.0.1")]
         requester_ip: String,
 
-        /// Payment processor UUID. Optional. Maps to `paymentProcessorId`.
+        /// Payment processor UUID. **Required by the API** (a create without it
+        /// is rejected). Left as a CLI option so any future merchant-default
+        /// flow isn't blocked client-side. Maps to `paymentProcessorId`.
         #[arg(long)]
         payment_processor_id: Option<String>,
 

@@ -344,14 +344,14 @@ async fn dispatch_tokens(
         } => {
             if !yes {
                 anyhow::bail!(
-                    "revocation requires --yes to confirm (e.g. `tokens revoke --client-id {client_id} --merchant-id {merchant_id} --yes`)"
+                    "revocation requires --yes to confirm (e.g. `keys revoke --client-id {client_id} --merchant-id {merchant_id} --yes`)"
                 );
             }
             let (_p, api) = build_client(profile)?;
             treat_404_as_ok(api.revoke_token(&client_id, &merchant_id).await)?;
             match output_fmt {
                 cli::OutputFormat::Json => {} // empty stdout, exit 0
-                cli::OutputFormat::Table => println!("Revoked token {client_id}."),
+                cli::OutputFormat::Table => println!("Revoked key {client_id}."),
                 cli::OutputFormat::Quiet => println!("{client_id}"),
             }
             Ok(())

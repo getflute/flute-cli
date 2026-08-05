@@ -1010,10 +1010,11 @@ pub enum SettlementsCommand {
     },
 }
 
-/// ISV Tokens subcommands — Phase 4 Task 4.1.
+/// ISV API key subcommands — Phase 4 Task 4.1. (Exposed as `flute keys …`;
+/// `tokens` remains a deprecated hidden alias.)
 #[derive(Subcommand, Debug)]
 pub enum TokensCommand {
-    /// Create an ISV API token (POST /pay-api/v1/merchants/tokens).
+    /// Create an ISV API key (POST /pay-api/v1/merchants/tokens).
     ///
     /// The response contains `clientSecret` which is shown **only once**.
     /// Store it securely immediately after creation.
@@ -1022,29 +1023,29 @@ pub enum TokensCommand {
         #[arg(long, required = true)]
         merchant_id: String,
 
-        /// Token display name (required). Maps to `tokenName` in the request body.
+        /// API key display name (required). Maps to `tokenName` in the request body.
         #[arg(long, required = true)]
         name: String,
     },
 
-    /// List ISV API tokens (GET /pay-api/v1/merchants/tokens).
+    /// List ISV API keys (GET /pay-api/v1/merchants/tokens).
     List {
         /// Filter by merchant UUID. Maps to `merchantId` query param (optional).
         #[arg(long)]
         merchant_id: Option<String>,
     },
 
-    /// Revoke an ISV API token (DELETE /pay-api/v1/merchants/tokens/{clientId}?merchantId=).
+    /// Revoke an ISV API key (DELETE /pay-api/v1/merchants/tokens/{clientId}?merchantId=).
     ///
     /// Both `--client-id` and `--merchant-id` are required by the API.
     /// Requires `--yes` to prevent accidental revocation.
     /// 404 is treated as idempotent success (already revoked).
     Revoke {
-        /// Client ID of the token to revoke (required).
+        /// Client ID of the key to revoke (required).
         #[arg(long, required = true)]
         client_id: String,
 
-        /// Merchant UUID that owns the token (required). The API returns 400 without it.
+        /// Merchant UUID that owns the key (required). The API returns 400 without it.
         #[arg(long, required = true)]
         merchant_id: String,
 

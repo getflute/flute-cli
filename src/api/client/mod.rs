@@ -635,6 +635,12 @@ mod tests {
             .with_writer(Buf(buf.clone()))
             .finish();
         let _guard = tracing::subscriber::set_default(subscriber);
+        // Force the `debug!` callsites to re-evaluate interest against THIS
+        // subscriber. Without this the test is flaky under the parallel test
+        // runner: another test may prime tracing's global callsite-interest
+        // cache as "disabled", so our thread-local DEBUG subscriber never sees
+        // the event and the captured buffer comes back empty.
+        tracing::callsite::rebuild_interest_cache();
 
         let server = MockServer::start().await;
         Mock::given(method("POST"))

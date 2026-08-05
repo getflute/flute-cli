@@ -557,6 +557,7 @@ async fn dispatch_customers(
     use cli::customers::{
         build_add_ach_body, build_add_card_body, build_customer_body, merge_customer_update,
         render_customer, render_customer_list, render_payment_method, render_payment_methods,
+        with_billing_address,
     };
 
     match cc {
@@ -566,13 +567,32 @@ async fn dispatch_customers(
             email,
             company,
             mobile,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_state_id,
+            billing_postal_code,
+            billing_country_id,
         } => {
-            let body = build_customer_body(
-                first_name.as_deref(),
-                last_name.as_deref(),
-                company.as_deref(),
-                email.as_deref(),
-                mobile.as_deref(),
+            let billing = cli::address::BillingArgs {
+                line1: billing_line1,
+                line2: billing_line2,
+                city: billing_city,
+                state_name: billing_state,
+                state_id: billing_state_id,
+                postal_code: billing_postal_code,
+                country_id: billing_country_id,
+            };
+            let body = with_billing_address(
+                build_customer_body(
+                    first_name.as_deref(),
+                    last_name.as_deref(),
+                    company.as_deref(),
+                    email.as_deref(),
+                    mobile.as_deref(),
+                ),
+                cli::address::billing_customer_json(&billing),
             );
             let (p, api) = build_client(profile)?;
             let result = api.create_customer(body).await?;
@@ -599,6 +619,13 @@ async fn dispatch_customers(
             email,
             company,
             mobile,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_state_id,
+            billing_postal_code,
+            billing_country_id,
         } => {
             // GET-merge-PUT-re-GET pattern:
             // 1. GET current values so omitted flags retain their existing data.
@@ -607,10 +634,24 @@ async fn dispatch_customers(
             //    body, so update_customer returns () — no JSON to decode.
             // 4. GET the customer again (fresh) so we render the server's
             //    canonical post-update state rather than our local merge.
+            let billing = cli::address::BillingArgs {
+                line1: billing_line1,
+                line2: billing_line2,
+                city: billing_city,
+                state_name: billing_state,
+                state_id: billing_state_id,
+                postal_code: billing_postal_code,
+                country_id: billing_country_id,
+            };
             let (p, api) = build_client(profile)?;
             let current = api.get_customer(&id).await?;
-            let body =
+            // --billing-* flags replace the address wholesale; otherwise the
+            // customer's current billingAddress is preserved through the merge.
+            let billing_json = cli::address::billing_customer_json(&billing)
+                .or_else(|| current.get("billingAddress").cloned());
+            let merged =
                 merge_customer_update(&current, first_name, last_name, company, email, mobile);
+            let body = with_billing_address(merged, billing_json);
             api.update_customer(&id, body).await?;
             let fresh = api.get_customer(&id).await?;
             render_customer(&fresh, output_fmt, &p.name)
@@ -865,6 +906,13 @@ async fn dispatch_transactions(
             l3_po,
             l3_product,
             reference_id,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_state_id,
+            billing_postal_code,
+            billing_country_id,
         } => {
             let m = parse_txn_money(&amount, tip_amount.as_deref(), l2_tax_rate.as_deref())?;
             execute_card_txn(
@@ -885,6 +933,15 @@ async fn dispatch_transactions(
                     l3_po,
                     l3_product,
                     reference_id,
+                    billing: cli::address::BillingArgs {
+                        line1: billing_line1,
+                        line2: billing_line2,
+                        city: billing_city,
+                        state_name: billing_state,
+                        state_id: billing_state_id,
+                        postal_code: billing_postal_code,
+                        country_id: billing_country_id,
+                    },
                 },
                 CardTxnKind::Sale,
             )
@@ -905,6 +962,13 @@ async fn dispatch_transactions(
             l3_po,
             l3_product,
             reference_id,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_state_id,
+            billing_postal_code,
+            billing_country_id,
         } => {
             let m = parse_txn_money(&amount, tip_amount.as_deref(), l2_tax_rate.as_deref())?;
             execute_card_txn(
@@ -925,6 +989,15 @@ async fn dispatch_transactions(
                     l3_po,
                     l3_product,
                     reference_id,
+                    billing: cli::address::BillingArgs {
+                        line1: billing_line1,
+                        line2: billing_line2,
+                        city: billing_city,
+                        state_name: billing_state,
+                        state_id: billing_state_id,
+                        postal_code: billing_postal_code,
+                        country_id: billing_country_id,
+                    },
                 },
                 CardTxnKind::Auth,
             )

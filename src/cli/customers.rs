@@ -103,6 +103,17 @@ pub fn build_customer_body(
     Value::Object(obj)
 }
 
+/// Insert a customer `billingAddress` (ARISE-4706) into an existing customer
+/// body. `body` must be a JSON object; a no-op when `billing` is `None`.
+/// Kept as a small pure helper so the create/update dispatch can attach AVS
+/// data without threading it through `build_customer_body`'s many callers.
+pub fn with_billing_address(mut body: Value, billing: Option<Value>) -> Value {
+    if let (Some(obj), Some(addr)) = (body.as_object_mut(), billing) {
+        obj.insert("billingAddress".into(), addr);
+    }
+    body
+}
+
 /// Build the JSON request body for `customers add-card`.
 ///
 /// `name` is optional; `pan`, `exp`, and `cvv` are required by the CLI flags.
@@ -568,6 +579,34 @@ mod tests {
     fn build_customer_body_no_fields_is_empty_object() {
         let body = build_customer_body(None, None, None, None, None);
         assert!(body.as_object().unwrap().is_empty());
+    }
+
+    // ── with_billing_address (ARISE-4706 AVS) ─────────────────────────────────
+
+    #[test]
+    fn with_billing_address_inserts_customer_keyed_address() {
+        let base = build_customer_body(Some("Ann"), None, None, None, None);
+        let billing =
+            crate::cli::address::billing_customer_json(&crate::cli::address::BillingArgs {
+                line1: Some("1 A St".into()),
+                city: Some("Denver".into()),
+                postal_code: Some("80202".into()),
+                country_id: Some(1),
+                ..Default::default()
+            });
+        let body = with_billing_address(base, billing);
+        assert_eq!(body["firstName"], "Ann");
+        // customer key spelling
+        assert_eq!(body["billingAddress"]["addressLine1"], "1 A St");
+        assert_eq!(body["billingAddress"]["zip"], "80202");
+        assert_eq!(body["billingAddress"]["countryId"], 1);
+    }
+
+    #[test]
+    fn with_billing_address_is_noop_when_none() {
+        let base = build_customer_body(Some("Ann"), None, None, None, None);
+        let body = with_billing_address(base, None);
+        assert!(body.get("billingAddress").is_none());
     }
 
     // ── build_add_card_body ───────────────────────────────────────────────────

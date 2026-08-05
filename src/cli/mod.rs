@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 pub use clap_complete::Shell;
 
 pub mod ach;
+pub mod address;
 pub mod auth;
 pub mod customers;
 pub mod devices;
@@ -164,6 +165,28 @@ pub enum TransactionsCommand {
         /// Merchant-assigned reference ID for idempotency tracking.
         #[arg(long)]
         reference_id: Option<String>,
+
+        /// AVS billing street line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+        /// AVS billing street line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+        /// AVS billing city (the API requires city + country when any billing field is set).
+        #[arg(long)]
+        billing_city: Option<String>,
+        /// AVS billing state name (e.g. `CO`).
+        #[arg(long)]
+        billing_state: Option<String>,
+        /// AVS billing numeric state id.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+        /// AVS billing postal / ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+        /// AVS billing numeric country id (e.g. 1 = US; required with city when any billing field is set).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
     },
 
     /// Authorise (hold) a card without capturing (POST /pay-api/v1/transactions/auth).
@@ -224,6 +247,28 @@ pub enum TransactionsCommand {
         /// Reference ID.
         #[arg(long)]
         reference_id: Option<String>,
+
+        /// AVS billing street line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+        /// AVS billing street line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+        /// AVS billing city (the API requires city + country when any billing field is set).
+        #[arg(long)]
+        billing_city: Option<String>,
+        /// AVS billing state name (e.g. `CO`).
+        #[arg(long)]
+        billing_state: Option<String>,
+        /// AVS billing numeric state id.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+        /// AVS billing postal / ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+        /// AVS billing numeric country id (e.g. 1 = US; required with city when any billing field is set).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
     },
 
     /// Capture a previously authorised transaction (POST /pay-api/v1/transactions/capture).
@@ -580,6 +625,28 @@ pub enum CustomersCommand {
         /// Customer mobile phone number.
         #[arg(long)]
         mobile: Option<String>,
+
+        /// AVS billing street line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+        /// AVS billing street line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+        /// AVS billing city.
+        #[arg(long)]
+        billing_city: Option<String>,
+        /// AVS billing state name (e.g. `CO`).
+        #[arg(long)]
+        billing_state: Option<String>,
+        /// AVS billing numeric state id.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+        /// AVS billing postal / ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+        /// AVS billing numeric country id (e.g. 1 = US).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
     },
 
     /// Fetch a single customer by ID (GET /pay-api/v1/customers/{id}).
@@ -631,6 +698,28 @@ pub enum CustomersCommand {
         /// New mobile phone number.
         #[arg(long)]
         mobile: Option<String>,
+
+        /// AVS billing street line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+        /// AVS billing street line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+        /// AVS billing city.
+        #[arg(long)]
+        billing_city: Option<String>,
+        /// AVS billing state name (e.g. `CO`).
+        #[arg(long)]
+        billing_state: Option<String>,
+        /// AVS billing numeric state id.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+        /// AVS billing postal / ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+        /// AVS billing numeric country id (e.g. 1 = US).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
     },
 
     /// Delete a customer (DELETE /pay-api/v1/customers/{id}).

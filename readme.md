@@ -136,10 +136,12 @@ Errors (non-zero exit) are also written to **stdout** as structured JSON when `-
 | Code | Meaning |
 |---|---|
 | `0` | Success |
-| `1` | General / unexpected error |
+| `1` | General / unexpected (transport, decode, server 5xx) |
 | `2` | Auth failure (401/403 or missing credentials) |
-| `3` | Validation error (400/422, bad input) |
+| `3` | Validation / bad input — server 400/422, client-side validation, or CLI usage/parse errors |
 | `4` | Not found (404) |
+
+Under `--output json`, CLI usage/parse errors are also written to **stdout** as a `{ "kind": "client", "message": … }` envelope (exit 3), so a machine consumer never gets an empty stdout on a bad invocation.
 
 ---
 

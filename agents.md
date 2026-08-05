@@ -60,7 +60,7 @@ non-TTY/CI stream — JSON stdout stays pure.
 | `client` | bad CLI args / input validation | no — fix the invocation |
 
 ### Exit codes
-`0` success · `1` general · `2` auth (401/403, missing creds) · `3` validation (400/422, client-side input) · `4` not found (404).
+`0` success · `1` general/unexpected (transport, decode, server 5xx) · `2` auth (401/403, missing creds) · `3` validation / bad input (server 400/422, **client-side validation, and CLI usage/parse errors**) · `4` not found (404). Under `--output json`, usage/parse errors are still emitted as a `{kind:"client"}` envelope on stdout.
 
 ## Environments
 

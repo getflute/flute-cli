@@ -1107,8 +1107,82 @@ async fn dispatch_transactions(
     }
 }
 
+/// Best-effort detection of `--output json` (flag wins over env) for use when
+/// argument parsing itself failed — so a usage error can still be surfaced as
+/// JSON on stdout for machine consumers.
+fn wants_json_output() -> bool {
+    let args: Vec<String> = std::env::args().collect();
+    for i in 0..args.len() {
+        if args[i] == "--output" {
+            return args
+                .get(i + 1)
+                .is_some_and(|v| v.eq_ignore_ascii_case("json"));
+        }
+        if let Some(v) = args[i].strip_prefix("--output=") {
+            return v.eq_ignore_ascii_case("json");
+        }
+    }
+    std::env::var("FLUTE_OUTPUT").is_ok_and(|v| v.eq_ignore_ascii_case("json"))
+}
+
+/// Strip ANSI escape sequences (clap colorizes errors on a TTY) so the JSON
+/// error message stays clean.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            for n in chars.by_ref() {
+                if n == 'm' {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Reduce a clap error to a concise, colorless message (drops the trailing
+/// "Usage: …" block) for the JSON error envelope.
+fn clap_error_message(e: &clap::Error) -> String {
+    let full = strip_ansi(&e.to_string());
+    match full.split_once("\n\nUsage:") {
+        Some((head, _)) => head.trim().to_string(),
+        None => full.trim().to_string(),
+    }
+}
+
 pub fn run() -> anyhow::Result<()> {
-    let cli = cli::Cli::parse();
+    // `try_parse` (not `parse`) so a usage error is handled on our terms:
+    // `--help`/`--version` still print to stdout and exit 0, but a genuine
+    // parse error becomes a client/validation error (exit 3, not clap's default
+    // 2 which collides with the auth code) and — under `--output json` — is
+    // emitted as a structured envelope on stdout for machine consumers.
+    let cli = match cli::Cli::try_parse() {
+        Ok(c) => c,
+        Err(e) => {
+            use clap::error::ErrorKind;
+            match e.kind() {
+                ErrorKind::DisplayHelp
+                | ErrorKind::DisplayVersion
+                | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => e.exit(),
+                _ => {
+                    if wants_json_output() {
+                        let err = anyhow::anyhow!("{}", clap_error_message(&e));
+                        let envelope = cli::output::ErrorJson::from_anyhow(&err);
+                        if let Ok(json) = serde_json::to_string_pretty(&envelope) {
+                            println!("{json}");
+                        }
+                    } else {
+                        eprint!("{e}");
+                    }
+                    std::process::exit(3);
+                }
+            }
+        }
+    };
     let profile = cli.profile.clone();
     let debug = cli.debug;
 

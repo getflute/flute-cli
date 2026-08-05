@@ -23,7 +23,7 @@ and the process exits non-zero. **Parse one stream, never both.** Do not invoke 
 |---|---|
 | `--profile <name>` | `sandbox` (default) or `production`/`prod`. Env: `FLUTE_PROFILE`. |
 | `--output <fmt>` | `json` (use this), `table` (human, default), `quiet` (resource id only). Falls back to `~/.flute/config.toml` `output`, then `table`. |
-| `--merchant-id <uuid>` | ISV merchant context (currently only token-management endpoints scope by it). |
+| `--merchant-id <uuid>` | ISV merchant context (currently only API-key management endpoints scope by it). |
 | `--debug` | Verbose HTTP request/response to **stderr** (sensitive fields redacted). For agents, prefer `--output json` + the `correlation_id`; only use `--debug` when an operator is investigating. |
 
 `--output json` also suppresses the "newer version available" notice and never emits it to a
@@ -130,7 +130,7 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 
 ### Subscriptions — `flute subscriptions …`
 `create`, `get <id>`, `list`, `payments <id>`, `terminate <id> --yes`.
-- `create` **required**: `--customer-id`, `--payment-method-id` (must be a vaulted+active method), `--amount`, `--number-of-payments`. Plus `--interval day|week|month` (aliases `daily|weekly|monthly`, default month), `--payment-frequency` (default 1), `--currency-id` (default 1), `--transaction-type` (default 2=Sale; 11=AchDebit), `--requester-ip` (default 127.0.0.1), `--payment-processor-id`, `--start-date`, `--sec-code`, `--faster`.
+- `create` **required**: `--customer-id`, `--payment-method-id` (must be a vaulted+active method), `--amount`, `--number-of-payments`, and **`--payment-processor-id`** (the API rejects a create without it). Plus `--interval day|week|month` (aliases `daily|weekly|monthly`, default month), `--payment-frequency` (default 1 — but **for `--interval day` the API only accepts 7, 15, or 30**), `--currency-id` (default 1), `--transaction-type` (default 2=Sale; 11=AchDebit), `--requester-ip` (default 127.0.0.1), `--start-date`, `--sec-code`, `--faster`.
 - `list` flags: `--limit`, `--page`, `--search`, `--customer-id`. `--status` is client-side.
 - `terminate` **requires `--yes`**. List items use `subscriptionId`; get uses `id` (CLI normalizes).
 

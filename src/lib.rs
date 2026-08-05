@@ -1169,7 +1169,7 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Devices(dc) => dispatch_devices(&profile, output_fmt, *dc).await,
             cli::Command::Pos(pc) => dispatch_pos(&profile, output_fmt, *pc).await,
             cli::Command::Settlements(sc) => dispatch_settlements(&profile, output_fmt, *sc).await,
-            cli::Command::Tokens(tc) => dispatch_tokens(&profile, output_fmt, *tc).await,
+            cli::Command::Keys(tc) => dispatch_tokens(&profile, output_fmt, *tc).await,
             cli::Command::Subscriptions(sc) => {
                 dispatch_subscriptions(&profile, output_fmt, *sc).await
             }

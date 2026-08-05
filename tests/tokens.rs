@@ -23,6 +23,29 @@ fn flute() -> Command {
     Command::cargo_bin("flute").expect("binary must be compiled")
 }
 
+// ── keys / tokens command name (ARISE-4706) ───────────────────────────────────
+
+/// `keys` is the primary command name.
+#[test]
+fn keys_is_the_primary_command_name() {
+    flute().args(["keys", "list", "--help"]).assert().success();
+    // and it is shown in top-level help
+    flute()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("keys"));
+}
+
+/// `tokens` still works as a deprecated (hidden) alias for backward compat.
+#[test]
+fn tokens_alias_still_works() {
+    flute()
+        .args(["tokens", "list", "--help"])
+        .assert()
+        .success();
+}
+
 // ── tokens create --help ──────────────────────────────────────────────────────
 
 /// `flute tokens create --help` exits 0 and documents --merchant-id and --name.

@@ -72,9 +72,12 @@ pub enum Command {
     /// Settlement batch operations (list, get).
     #[command(subcommand)]
     Settlements(Box<SettlementsCommand>),
-    /// ISV API token operations (create, list, revoke).
-    #[command(subcommand)]
-    Tokens(Box<TokensCommand>),
+    /// ISV API key operations (create, list, revoke).
+    ///
+    /// `tokens` is accepted as a deprecated hidden alias for backward
+    /// compatibility (ARISE-4706).
+    #[command(subcommand, alias = "tokens")]
+    Keys(Box<TokensCommand>),
     /// Subscription operations (create, get, list, payments, terminate).
     #[command(subcommand)]
     Subscriptions(Box<SubscriptionsCommand>),

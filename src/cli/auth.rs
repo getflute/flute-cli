@@ -31,37 +31,64 @@ pub async fn login(profile: &str) -> Result<()> {
 }
 
 /// Show active profile, environment, and credential/token status.
+/// Report the active profile plus a **live** authentication check (ARISE-4706):
+/// the current client ID and whether the stored credentials actually
+/// authenticate against the API right now (via an authenticated ping).
 pub async fn status(profile: &str, output: OutputFormat) -> Result<()> {
     let p =
         Profile::by_name(profile).ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
 
     let creds = auth::keychain::load_with_env_fallback(profile)?;
-    let has_creds = creds.is_some();
+    // Client ID from stored creds; overridden by the authoritative value the
+    // server echoes back on a successful ping.
+    let mut client_id = creds.as_ref().map(|(id, _)| id.clone());
+    let mut merchant_id: Option<String> = None;
+
+    // Live check: `authenticated` is true only when we have credentials AND an
+    // authenticated ping round-trips successfully. Any failure (no creds, bad
+    // creds, network/timeout) leaves it false but still reports the client ID.
+    let mut authenticated = false;
+    if creds.is_some()
+        && let Ok((_p, api)) = crate::build_client(profile)
+        && let Ok(body) = api.ping().await
+    {
+        authenticated = body
+            .get("authenticated")
+            .and_then(|b| b.as_bool())
+            .unwrap_or(true);
+        if let Some(cid) = body.get("clientId").and_then(|v| v.as_str()) {
+            client_id = Some(cid.to_string());
+        }
+        merchant_id = body
+            .get("merchantId")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+    }
 
     match output {
         OutputFormat::Json => {
             let data = serde_json::json!({
                 "profile": p.name,
                 "api_base_url": p.api_base_url,
-                "has_credentials": has_creds,
+                "authenticated": authenticated,
+                "client_id": client_id,
+                "merchant_id": merchant_id,
             });
             let env = crate::cli::output::Envelope::new("auth_status", data, &p.name, None);
             println!("{}", serde_json::to_string_pretty(&env)?);
         }
         OutputFormat::Quiet => {
-            println!("{}", p.name);
+            // id-only convention: the client ID (blank line when unknown).
+            println!("{}", client_id.as_deref().unwrap_or(""));
         }
         OutputFormat::Table => {
-            println!("Profile:     {}", p.name);
-            println!("API base:    {}", p.api_base_url);
-            println!(
-                "Credentials: {}",
-                if has_creds {
-                    "found"
-                } else {
-                    "not set — run `flute auth login`"
-                }
-            );
+            println!("Profile:       {}", p.name);
+            println!("API base:      {}", p.api_base_url);
+            println!("Authenticated: {authenticated}");
+            println!("Client ID:     {}", client_id.as_deref().unwrap_or("—"));
+            if let Some(m) = &merchant_id {
+                println!("Merchant ID:   {m}");
+            }
         }
     }
 

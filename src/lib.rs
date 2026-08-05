@@ -646,9 +646,14 @@ async fn dispatch_customers(
             let (p, api) = build_client(profile)?;
             let current = api.get_customer(&id).await?;
             // --billing-* flags replace the address wholesale; otherwise the
-            // customer's current billingAddress is preserved through the merge.
-            let billing_json = cli::address::billing_customer_json(&billing)
-                .or_else(|| current.get("billingAddress").cloned());
+            // customer's current billingAddress is preserved — remapped from the
+            // GET response shape (nested state/country) to the update shape
+            // (flat stateId/countryId), never copied verbatim. (ARISE-4706.)
+            let billing_json = cli::address::billing_customer_json(&billing).or_else(|| {
+                current
+                    .get("billingAddress")
+                    .and_then(cli::customers::billing_from_get_response)
+            });
             let merged =
                 merge_customer_update(&current, first_name, last_name, company, email, mobile);
             let body = with_billing_address(merged, billing_json);

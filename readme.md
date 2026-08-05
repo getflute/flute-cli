@@ -97,15 +97,15 @@ Credentials are kept in the OS keychain, keyed per profile. The config file (`~/
 | Group | What it does |
 |---|---|
 | `auth` | `login`, `logout`, `status`, `switch`, `token` — credential and profile management |
-| `transactions` | `sale`, `auth`, `capture`, `void`, `refund`, `settle`, `tip-adjust`, `get`, `list`, `inspect` — card payment lifecycle |
+| `transactions` | `sale`, `auth`, `capture`, `void`, `refund`, `settle`, `tip-adjust`, `get`, `list`, `inspect` — card payment lifecycle. `sale`/`auth` accept AVS `--billing-*` flags |
 | `ach` | `debit`, `credit`, `void`, `refund` — ACH bank-transfer payments |
-| `customers` | `create`, `get`, `list`, `update`, `delete`, `add-card`, `add-ach`, `methods`, `remove-method` — customer vault |
+| `customers` | `create`, `get`, `list`, `update`, `delete`, `add-card`, `add-ach`, `methods`, `remove-method` — customer vault. `create`/`update` accept AVS `--billing-*` flags |
 | `terminals` | `list`, `status` — POS terminal management |
 | `devices` | `list`, `get`, `register`, `ttp-jwt`, `ttp-activate` — mobile payment device management |
 | `pos` | `create` (with `--wait` long-poll), `get`, `list`, `cancel` — POS transactions |
 | `settlements` | `list`, `get` — settlement batch queries |
 | `subscriptions` | `create`, `get`, `list`, `payments`, `terminate` — recurring billing |
-| `tokens` | `create`, `list`, `revoke` — ISV API token management |
+| `keys` | `create`, `list`, `revoke` — ISV API key management (`tokens` is a deprecated alias) |
 | `ping` | API health check |
 | `version` | Print CLI version and active profile |
 | `update` | Self-update to the latest GitHub Release |

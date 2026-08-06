@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 pub use clap_complete::Shell;
 
 pub mod ach;
+pub mod address;
 pub mod auth;
 pub mod customers;
 pub mod devices;
@@ -71,9 +72,12 @@ pub enum Command {
     /// Settlement batch operations (list, get).
     #[command(subcommand)]
     Settlements(Box<SettlementsCommand>),
-    /// ISV API token operations (create, list, revoke).
-    #[command(subcommand)]
-    Tokens(Box<TokensCommand>),
+    /// ISV API key operations (create, list, revoke).
+    ///
+    /// `tokens` is accepted as a deprecated hidden alias for backward
+    /// compatibility (ARISE-4706).
+    #[command(subcommand, alias = "tokens")]
+    Keys(Box<TokensCommand>),
     /// Subscription operations (create, get, list, payments, terminate).
     #[command(subcommand)]
     Subscriptions(Box<SubscriptionsCommand>),
@@ -91,7 +95,7 @@ pub enum Command {
 pub enum AuthCommand {
     /// Prompt for client_id + client_secret and store them in the OS keychain.
     Login,
-    /// Show active profile, environment, and token status.
+    /// Show active profile, environment, and live authentication status.
     Status,
     /// Set the default profile in ~/.flute/config.toml.
     Switch { profile: String },
@@ -164,6 +168,28 @@ pub enum TransactionsCommand {
         /// Merchant-assigned reference ID for idempotency tracking.
         #[arg(long)]
         reference_id: Option<String>,
+
+        /// AVS billing street line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+        /// AVS billing street line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+        /// AVS billing city (the API requires city + country when any billing field is set).
+        #[arg(long)]
+        billing_city: Option<String>,
+        /// AVS billing state name (e.g. `CO`).
+        #[arg(long)]
+        billing_state: Option<String>,
+        /// AVS billing numeric state id.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+        /// AVS billing postal / ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+        /// AVS billing numeric country id (e.g. 1 = US; required with city when any billing field is set).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
     },
 
     /// Authorise (hold) a card without capturing (POST /pay-api/v1/transactions/auth).
@@ -224,6 +250,28 @@ pub enum TransactionsCommand {
         /// Reference ID.
         #[arg(long)]
         reference_id: Option<String>,
+
+        /// AVS billing street line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+        /// AVS billing street line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+        /// AVS billing city (the API requires city + country when any billing field is set).
+        #[arg(long)]
+        billing_city: Option<String>,
+        /// AVS billing state name (e.g. `CO`).
+        #[arg(long)]
+        billing_state: Option<String>,
+        /// AVS billing numeric state id.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+        /// AVS billing postal / ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+        /// AVS billing numeric country id (e.g. 1 = US; required with city when any billing field is set).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
     },
 
     /// Capture a previously authorised transaction (POST /pay-api/v1/transactions/capture).
@@ -580,6 +628,28 @@ pub enum CustomersCommand {
         /// Customer mobile phone number.
         #[arg(long)]
         mobile: Option<String>,
+
+        /// AVS billing street line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+        /// AVS billing street line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+        /// AVS billing city.
+        #[arg(long)]
+        billing_city: Option<String>,
+        /// AVS billing state name (e.g. `CO`).
+        #[arg(long)]
+        billing_state: Option<String>,
+        /// AVS billing numeric state id.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+        /// AVS billing postal / ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+        /// AVS billing numeric country id (e.g. 1 = US).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
     },
 
     /// Fetch a single customer by ID (GET /pay-api/v1/customers/{id}).
@@ -631,6 +701,28 @@ pub enum CustomersCommand {
         /// New mobile phone number.
         #[arg(long)]
         mobile: Option<String>,
+
+        /// AVS billing street line 1.
+        #[arg(long)]
+        billing_line1: Option<String>,
+        /// AVS billing street line 2.
+        #[arg(long)]
+        billing_line2: Option<String>,
+        /// AVS billing city.
+        #[arg(long)]
+        billing_city: Option<String>,
+        /// AVS billing state name (e.g. `CO`).
+        #[arg(long)]
+        billing_state: Option<String>,
+        /// AVS billing numeric state id.
+        #[arg(long)]
+        billing_state_id: Option<i32>,
+        /// AVS billing postal / ZIP code.
+        #[arg(long)]
+        billing_postal_code: Option<String>,
+        /// AVS billing numeric country id (e.g. 1 = US).
+        #[arg(long)]
+        billing_country_id: Option<i32>,
     },
 
     /// Delete a customer (DELETE /pay-api/v1/customers/{id}).
@@ -918,10 +1010,11 @@ pub enum SettlementsCommand {
     },
 }
 
-/// ISV Tokens subcommands — Phase 4 Task 4.1.
+/// ISV API key subcommands — Phase 4 Task 4.1. (Exposed as `flute keys …`;
+/// `tokens` remains a deprecated hidden alias.)
 #[derive(Subcommand, Debug)]
 pub enum TokensCommand {
-    /// Create an ISV API token (POST /pay-api/v1/merchants/tokens).
+    /// Create an ISV API key (POST /pay-api/v1/merchants/tokens).
     ///
     /// The response contains `clientSecret` which is shown **only once**.
     /// Store it securely immediately after creation.
@@ -930,29 +1023,29 @@ pub enum TokensCommand {
         #[arg(long, required = true)]
         merchant_id: String,
 
-        /// Token display name (required). Maps to `tokenName` in the request body.
+        /// API key display name (required). Maps to `tokenName` in the request body.
         #[arg(long, required = true)]
         name: String,
     },
 
-    /// List ISV API tokens (GET /pay-api/v1/merchants/tokens).
+    /// List ISV API keys (GET /pay-api/v1/merchants/tokens).
     List {
         /// Filter by merchant UUID. Maps to `merchantId` query param (optional).
         #[arg(long)]
         merchant_id: Option<String>,
     },
 
-    /// Revoke an ISV API token (DELETE /pay-api/v1/merchants/tokens/{clientId}?merchantId=).
+    /// Revoke an ISV API key (DELETE /pay-api/v1/merchants/tokens/{clientId}?merchantId=).
     ///
     /// Both `--client-id` and `--merchant-id` are required by the API.
     /// Requires `--yes` to prevent accidental revocation.
     /// 404 is treated as idempotent success (already revoked).
     Revoke {
-        /// Client ID of the token to revoke (required).
+        /// Client ID of the key to revoke (required).
         #[arg(long, required = true)]
         client_id: String,
 
-        /// Merchant UUID that owns the token (required). The API returns 400 without it.
+        /// Merchant UUID that owns the key (required). The API returns 400 without it.
         #[arg(long, required = true)]
         merchant_id: String,
 
@@ -988,12 +1081,16 @@ pub enum SubscriptionsCommand {
         #[arg(long, required = true)]
         number_of_payments: u32,
 
-        /// Payment frequency (default 1 = every 1 unit). Maps to `paymentFrequency`.
+        /// Payment frequency (default 1). Maps to `paymentFrequency`. The valid
+        /// values depend on `--interval`: for `week`/`month` this is the number
+        /// of units between payments (1 = every unit); for `--interval day` the
+        /// API only accepts 7, 15, or 30 (a plain `1` is rejected).
         #[arg(long, default_value_t = 1)]
         payment_frequency: u32,
 
         /// Payment interval: `day`, `week`, or `month` (default `month`).
-        /// Maps to `paymentFrequencyUnit` (1=Day, 2=Week, 3=Month).
+        /// Maps to `paymentFrequencyUnit` (1=Day, 2=Week, 3=Month). For `day`,
+        /// pair with `--payment-frequency 7|15|30`.
         #[arg(long, value_enum, default_value = "month")]
         interval: subscriptions::Interval,
 
@@ -1006,7 +1103,9 @@ pub enum SubscriptionsCommand {
         #[arg(long, default_value = "127.0.0.1")]
         requester_ip: String,
 
-        /// Payment processor UUID. Optional. Maps to `paymentProcessorId`.
+        /// Payment processor UUID. **Required by the API** (a create without it
+        /// is rejected). Left as a CLI option so any future merchant-default
+        /// flow isn't blocked client-side. Maps to `paymentProcessorId`.
         #[arg(long)]
         payment_processor_id: Option<String>,
 

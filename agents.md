@@ -23,7 +23,7 @@ and the process exits non-zero. **Parse one stream, never both.** Do not invoke 
 |---|---|
 | `--profile <name>` | `sandbox` (default) or `production`/`prod`. Env: `FLUTE_PROFILE`. |
 | `--output <fmt>` | `json` (use this), `table` (human, default), `quiet` (resource id only). Falls back to `~/.flute/config.toml` `output`, then `table`. |
-| `--merchant-id <uuid>` | ISV merchant context (currently only token-management endpoints scope by it). |
+| `--merchant-id <uuid>` | ISV merchant context (currently only API-key management endpoints scope by it). |
 | `--debug` | Verbose HTTP request/response to **stderr** (sensitive fields redacted). For agents, prefer `--output json` + the `correlation_id`; only use `--debug` when an operator is investigating. |
 
 `--output json` also suppresses the "newer version available" notice and never emits it to a
@@ -60,7 +60,7 @@ non-TTY/CI stream — JSON stdout stays pure.
 | `client` | bad CLI args / input validation | no — fix the invocation |
 
 ### Exit codes
-`0` success · `1` general · `2` auth (401/403, missing creds) · `3` validation (400/422, client-side input) · `4` not found (404).
+`0` success · `1` general/unexpected (transport, decode, server 5xx) · `2` auth (401/403, missing creds) · `3` validation / bad input (server 400/422, **client-side validation, and CLI usage/parse errors**) · `4` not found (404). Under `--output json`, usage/parse errors are still emitted as a `{kind:"client"}` envelope on stdout.
 
 ## Environments
 
@@ -81,6 +81,10 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
   `--customer-id`, `--payment-method-id`, `--currency-id` (**default 1=USD; required by the API**),
   `--card-data-source` (default 1=Internet/ISV), `--l2-tax-rate`, `--l3-invoice`, `--l3-po`,
   `--l3-product` (repeatable, `Description,SKU,UnitPrice,UnitOfMeasure,Quantity`), `--reference-id`.
+- `sale`/`auth` **AVS billing** (ARISE-4706): `--billing-line1`, `--billing-line2`, `--billing-city`,
+  `--billing-state`, `--billing-state-id <int>`, `--billing-postal-code`, `--billing-country-id <int>`
+  — emitted as `billingAddress` only when at least one is set. Supply at least city + country id for AVS;
+  omitting the address can cause AVS-sensitive processors to **decline** the transaction.
 - `capture`/`void`/`refund`/`tip-adjust` take `--transaction-id`; `refund`/`capture` accept optional `--amount`; `tip-adjust` takes `--tip-amount`.
 - `settle` takes `--payment-processor-id` (**batch-level** — settles the processor's open batch, NOT a single txn).
 - `list` flags: `--limit`(→pageSize), `--page`, `--unsettled`; `--status`/`--from`/`--to` filter the returned page **client-side** (not server params).
@@ -102,6 +106,10 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 `methods <id>`, `remove-method <id> <method-id> --yes`.
 - `create`/`update` flags: `--first-name`, `--last-name`, `--email`, `--company`, `--mobile`.
   **`update` is GET-merge-PUT** (the API PUT is full-replace): omitted flags retain existing values.
+- `create`/`update` **AVS billing** (ARISE-4706): `--billing-line1`, `--billing-line2`, `--billing-city`,
+  `--billing-state`, `--billing-state-id <int>`, `--billing-postal-code`, `--billing-country-id <int>`
+  → customer `billingAddress`. On `update`, supplying any `--billing-*` replaces the address wholesale;
+  omitting them preserves the customer's current `billingAddress`.
 - `list` flags: `--limit`(→pageSize), `--page`, `--search` (real server param).
 - `add-card <id>`: `--card`, `--exp`, `--cvv`, `--name`. `add-ach <id>`: `--routing`, `--account`, `--account-type`, `--account-holder-type`, `--tax-id`, `--name`.
 - POST responses are minimal (`{id}` / `{clientId,…}`); use `get`/`methods` for full detail.
@@ -122,18 +130,19 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 
 ### Subscriptions — `flute subscriptions …`
 `create`, `get <id>`, `list`, `payments <id>`, `terminate <id> --yes`.
-- `create` **required**: `--customer-id`, `--payment-method-id` (must be a vaulted+active method), `--amount`, `--number-of-payments`. Plus `--interval day|week|month` (aliases `daily|weekly|monthly`, default month), `--payment-frequency` (default 1), `--currency-id` (default 1), `--transaction-type` (default 2=Sale; 11=AchDebit), `--requester-ip` (default 127.0.0.1), `--payment-processor-id`, `--start-date`, `--sec-code`, `--faster`.
+- `create` **required**: `--customer-id`, `--payment-method-id` (must be a vaulted+active method), `--amount`, `--number-of-payments`, and **`--payment-processor-id`** (the API rejects a create without it). Plus `--interval day|week|month` (aliases `daily|weekly|monthly`, default month), `--payment-frequency` (default 1 — but **for `--interval day` the API only accepts 7, 15, or 30**), `--currency-id` (default 1), `--transaction-type` (default 2=Sale; 11=AchDebit), `--requester-ip` (default 127.0.0.1), `--start-date`, `--sec-code`, `--faster`.
 - `list` flags: `--limit`, `--page`, `--search`, `--customer-id`. `--status` is client-side.
 - `terminate` **requires `--yes`**. List items use `subscriptionId`; get uses `id` (CLI normalizes).
 
-### ISV Tokens — `flute tokens …`
-`create`, `list`, `revoke`.
+### ISV API Keys — `flute keys …`
+`create`, `list`, `revoke`. (`flute tokens …` is a deprecated hidden alias that still works.)
 - `create --merchant-id <uuid> --name "<name>"` → returns `clientId` + **`clientSecret` shown ONCE** (capture it from the JSON envelope; the API never returns it again).
 - `list [--merchant-id <uuid>]`.
 - `revoke --client-id <uuid> --merchant-id <uuid> --yes` — **`--merchant-id` is required** (DELETE needs it as a query param) and `--yes` is required. 404 is idempotent success.
 
 ### Utility — `flute …`
 `ping` (health check), `version`, `update` (self-update; no-op message if built from source), `completion bash|zsh|fish|powershell|elvish`.
+- `auth status` → `{profile, api_base_url, authenticated, client_id, merchant_id}` (ARISE-4706). It is a **live** check: it pings the API, so `authenticated` is `true` only when the stored credentials actually round-trip; `client_id` is the server-authoritative value (falls back to the stored id), `merchant_id` is present when the principal is merchant-bound.
 
 ---
 
@@ -141,8 +150,8 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 
 | Safe to retry | NOT safe to retry (creates/moves money, or errors on repeat) |
 |---|---|
-| all `get`/`list`/`status`/`inspect`/`methods`/`payments` (pure reads) | `transactions sale`/`auth`, `ach debit`/`credit`, `transactions capture`/`refund`, `pos create`, `customers create`, `customers add-card`/`add-ach`, `subscriptions create`, `tokens create` |
-| `delete`/`remove-method`/`tokens revoke` — the CLI maps a repeat **404** to success, so re-running is a safe no-op | `void`/`cancel`/`terminate` — **not** idempotent: the CLI does not swallow the repeat, so it surfaces the server's error. E.g. `subscriptions terminate` on an already-terminated subscription returns **400 "already Terminated"** (exit 3), *not* a 404/no-op. Reconcile with `get`/`list` first. |
+| all `get`/`list`/`status`/`inspect`/`methods`/`payments` (pure reads) | `transactions sale`/`auth`, `ach debit`/`credit`, `transactions capture`/`refund`, `pos create`, `customers create`, `customers add-card`/`add-ach`, `subscriptions create`, `keys create` |
+| `delete`/`remove-method`/`keys revoke` — the CLI maps a repeat **404** to success, so re-running is a safe no-op | `void`/`cancel`/`terminate` — **not** idempotent: the CLI does not swallow the repeat, so it surfaces the server's error. E.g. `subscriptions terminate` on an already-terminated subscription returns **400 "already Terminated"** (exit 3), *not* a 404/no-op. Reconcile with `get`/`list` first. |
 
 On an ambiguous timeout for a non-retryable op, **`list`/`get` to reconcile before reissuing**.
 Use a unique `--reference-id` on `transactions`/`pos` to leverage server-side duplicate control.
@@ -158,7 +167,7 @@ Use a unique `--reference-id` on `transactions`/`pos` to leverage server-side du
 | Refund a transaction | `flute --output json transactions refund --transaction-id <id> [--amount …]` |
 | Create + vault a customer | `flute … customers create --first-name … --email …` then `customers add-card <id> --card … --exp … --cvv …` |
 | Start a terminal sale | `flute --output json pos create --terminal-id <id> --amount 10.00 --pos-device-id <dev> --reference-id <ref> --wait` |
-| Issue a merchant API token | `flute --output json tokens create --merchant-id <id> --name "<name>"` (save the one-shot `clientSecret`) |
+| Issue a merchant API key | `flute --output json keys create --merchant-id <id> --name "<name>"` (save the one-shot `clientSecret`) |
 
 ## Things to avoid
 

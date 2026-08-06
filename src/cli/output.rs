@@ -137,7 +137,11 @@ pub fn exit_code_for(err: &anyhow::Error) -> i32 {
         Some(ApiError::Api { status, .. }) => exit_code_for_api(*status),
         Some(ApiError::Auth(_)) => 2,
         Some(ApiError::Decode(_)) | Some(ApiError::Transport(_)) => 1,
-        None => 1,
+        // Any other (non-typed) error is a client-side problem — bad input,
+        // usage/validation, config — which the documented contract classifies
+        // as a validation error (exit 3), parallel to a server 400/422. Only
+        // server/transport/decode failures above stay "general" (exit 1).
+        None => 3,
     }
 }
 
@@ -283,9 +287,11 @@ mod tests {
         .into();
         assert_eq!(exit_code_for(&api_404), 4);
 
-        // Plain anyhow (non-ApiError) → 1
+        // Plain anyhow (client-side validation / usage) → 3, matching the
+        // documented contract (client-side input errors are validation errors,
+        // parallel to a server 400/422). Server/transport/decode stay 1.
         let plain = anyhow::anyhow!("x");
-        assert_eq!(exit_code_for(&plain), 1);
+        assert_eq!(exit_code_for(&plain), 3);
     }
 
     #[test]

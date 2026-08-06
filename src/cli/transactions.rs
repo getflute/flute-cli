@@ -34,6 +34,9 @@ pub(crate) struct SaleArgs {
     /// Multiple --l3-product flags are collected into an array of product objects.
     pub l3_product: Vec<String>,
     pub reference_id: Option<String>,
+    /// AVS billing address (ARISE-4706). Emitted as `billingAddress` when any
+    /// `--billing-*` flag is supplied; omitted entirely otherwise.
+    pub billing: crate::cli::address::BillingArgs,
 }
 
 /// Parse a single `--l3-product` token into an object.
@@ -191,6 +194,11 @@ pub(crate) fn build_sale_body(args: &SaleArgs) -> Result<Value> {
             }
         }
         obj.insert("l3".into(), Value::Object(l3));
+    }
+
+    // AVS billing address — only when at least one --billing-* flag was given.
+    if let Some(addr) = crate::cli::address::billing_transaction_json(&args.billing) {
+        obj.insert("billingAddress".into(), addr);
     }
 
     Ok(Value::Object(obj))
@@ -883,6 +891,65 @@ mod tests {
     /// - `customerInitiatedTransaction` = false
     /// - `currencyId` is ABSENT (not passed → server defaults)
     /// - PAN appears in the body (not redacted at the body-building stage)
+    // ARISE-4706: `--billing-*` flags must emit a transaction `billingAddress`
+    // object using the transaction key spelling (line1/postalCode/…), and be
+    // absent entirely when no billing flag is supplied.
+    #[test]
+    fn build_sale_body_emits_billing_address_for_avs() {
+        let args = SaleArgs {
+            amount: Decimal::from_str("100.00").unwrap(),
+            card: Some("4111111111111111".into()),
+            exp: Some("12/26".into()),
+            cvv: Some("123".into()),
+            tip_amount: None,
+            customer_id: None,
+            payment_method_id: None,
+            currency_id: None,
+            card_data_source: 1,
+            l2_tax_rate: None,
+            l3_invoice: None,
+            l3_po: None,
+            l3_product: vec![],
+            reference_id: None,
+            billing: crate::cli::address::BillingArgs {
+                line1: Some("123 Test St".into()),
+                city: Some("Denver".into()),
+                postal_code: Some("80202".into()),
+                country_id: Some(1),
+                ..Default::default()
+            },
+        };
+        let body = build_sale_body(&args).unwrap();
+        let addr = &body["billingAddress"];
+        assert_eq!(addr["line1"], "123 Test St");
+        assert_eq!(addr["city"], "Denver");
+        assert_eq!(addr["postalCode"], "80202");
+        assert_eq!(addr["countryId"], 1);
+    }
+
+    #[test]
+    fn build_sale_body_omits_billing_address_when_absent() {
+        let args = SaleArgs {
+            amount: Decimal::from_str("1.00").unwrap(),
+            card: Some("4111111111111111".into()),
+            exp: Some("12/26".into()),
+            cvv: None,
+            tip_amount: None,
+            customer_id: None,
+            payment_method_id: None,
+            currency_id: None,
+            card_data_source: 1,
+            l2_tax_rate: None,
+            l3_invoice: None,
+            l3_po: None,
+            l3_product: vec![],
+            reference_id: None,
+            billing: crate::cli::address::BillingArgs::default(),
+        };
+        let body = build_sale_body(&args).unwrap();
+        assert!(body.get("billingAddress").is_none());
+    }
+
     #[test]
     fn build_sale_body_maps_flags_to_api_fields() {
         let args = SaleArgs {
@@ -900,6 +967,7 @@ mod tests {
             l3_po: None,
             l3_product: vec![],
             reference_id: None,
+            billing: crate::cli::address::BillingArgs::default(),
         };
 
         let body = build_sale_body(&args).unwrap();
@@ -961,6 +1029,7 @@ mod tests {
             l3_po: None,
             l3_product: vec![],
             reference_id: None,
+            billing: crate::cli::address::BillingArgs::default(),
         };
         let body = build_sale_body(&args).unwrap();
         assert_eq!(body["currencyId"], 840);
@@ -983,6 +1052,7 @@ mod tests {
             l3_po: None,
             l3_product: vec![],
             reference_id: None,
+            billing: crate::cli::address::BillingArgs::default(),
         };
         let body = build_sale_body(&args).unwrap();
         assert!(body["tipAmount"].is_number());
@@ -1006,6 +1076,7 @@ mod tests {
             l3_po: None,
             l3_product: vec![],
             reference_id: None,
+            billing: crate::cli::address::BillingArgs::default(),
         };
         let body = build_sale_body(&args).unwrap();
         assert!(body.get("l2").is_some(), "l2 must be present");
@@ -1033,6 +1104,7 @@ mod tests {
             l3_po: Some("PO-002".into()),
             l3_product: vec!["Widget,SKU-1,10.00,EA,2".into()],
             reference_id: None,
+            billing: crate::cli::address::BillingArgs::default(),
         };
         let body = build_sale_body(&args).unwrap();
         assert!(body.get("l3").is_some(), "l3 must be present");
@@ -1211,6 +1283,7 @@ mod tests {
             l3_po: None,
             l3_product: vec!["".into(), "   ".into()],
             reference_id: None,
+            billing: crate::cli::address::BillingArgs::default(),
         };
         let body = build_sale_body(&args).unwrap();
         // l3 is present (because l3_invoice was set), but products must be absent

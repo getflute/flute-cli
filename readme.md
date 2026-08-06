@@ -97,15 +97,15 @@ Credentials are kept in the OS keychain, keyed per profile. The config file (`~/
 | Group | What it does |
 |---|---|
 | `auth` | `login`, `logout`, `status`, `switch`, `token` — credential and profile management |
-| `transactions` | `sale`, `auth`, `capture`, `void`, `refund`, `settle`, `tip-adjust`, `get`, `list`, `inspect` — card payment lifecycle |
+| `transactions` | `sale`, `auth`, `capture`, `void`, `refund`, `settle`, `tip-adjust`, `get`, `list`, `inspect` — card payment lifecycle. `sale`/`auth` accept AVS `--billing-*` flags |
 | `ach` | `debit`, `credit`, `void`, `refund` — ACH bank-transfer payments |
-| `customers` | `create`, `get`, `list`, `update`, `delete`, `add-card`, `add-ach`, `methods`, `remove-method` — customer vault |
+| `customers` | `create`, `get`, `list`, `update`, `delete`, `add-card`, `add-ach`, `methods`, `remove-method` — customer vault. `create`/`update` accept AVS `--billing-*` flags |
 | `terminals` | `list`, `status` — POS terminal management |
 | `devices` | `list`, `get`, `register`, `ttp-jwt`, `ttp-activate` — mobile payment device management |
 | `pos` | `create` (with `--wait` long-poll), `get`, `list`, `cancel` — POS transactions |
 | `settlements` | `list`, `get` — settlement batch queries |
 | `subscriptions` | `create`, `get`, `list`, `payments`, `terminate` — recurring billing |
-| `tokens` | `create`, `list`, `revoke` — ISV API token management |
+| `keys` | `create`, `list`, `revoke` — ISV API key management (`tokens` is a deprecated alias) |
 | `ping` | API health check |
 | `version` | Print CLI version and active profile |
 | `update` | Self-update to the latest GitHub Release |
@@ -136,10 +136,12 @@ Errors (non-zero exit) are also written to **stdout** as structured JSON when `-
 | Code | Meaning |
 |---|---|
 | `0` | Success |
-| `1` | General / unexpected error |
+| `1` | General / unexpected (transport, decode, server 5xx) |
 | `2` | Auth failure (401/403 or missing credentials) |
-| `3` | Validation error (400/422, bad input) |
+| `3` | Validation / bad input — server 400/422, client-side validation, or CLI usage/parse errors |
 | `4` | Not found (404) |
+
+Under `--output json`, CLI usage/parse errors are also written to **stdout** as a `{ "kind": "client", "message": … }` envelope (exit 3), so a machine consumer never gets an empty stdout on a bad invocation.
 
 ---
 

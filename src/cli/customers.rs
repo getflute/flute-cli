@@ -103,6 +103,68 @@ pub fn build_customer_body(
     Value::Object(obj)
 }
 
+/// Insert a customer `billingAddress` (ARISE-4706) into an existing customer
+/// body. `body` must be a JSON object; a no-op when `billing` is `None`.
+/// Kept as a small pure helper so the create/update dispatch can attach AVS
+/// data without threading it through `build_customer_body`'s many callers.
+pub fn with_billing_address(mut body: Value, billing: Option<Value>) -> Value {
+    if let (Some(obj), Some(addr)) = (body.as_object_mut(), billing) {
+        obj.insert("billingAddress".into(), addr);
+    }
+    body
+}
+
+/// Convert a customer's **GET-response** `billingAddress` into the shape the
+/// **update PUT** expects (ARISE-4706).
+///
+/// The GET response nests `state`/`country` objects and omits the flat
+/// `stateId`/`countryId` the write endpoint requires. Preserving the address on
+/// an unrelated `customers update` by copying the GET body verbatim would send
+/// stray `state`/`country` objects and **drop** the ids — corrupting or failing
+/// the saved address. This remaps `state.id → stateId` and `country.id →
+/// countryId`, carries the scalar fields over, and drops the nested objects.
+///
+/// Returns `None` when there is nothing worth preserving. Tolerates an
+/// already-flat shape defensively.
+pub fn billing_from_get_response(current_billing: &Value) -> Option<Value> {
+    let src = current_billing.as_object()?;
+    let mut m = Map::new();
+
+    for key in ["addressLine1", "addressLine2", "city", "zip", "stateName"] {
+        if let Some(v) = src.get(key)
+            && !v.is_null()
+        {
+            m.insert(key.to_string(), v.clone());
+        }
+    }
+
+    let state_id = src
+        .get("state")
+        .and_then(|s| s.get("id"))
+        .or_else(|| src.get("stateId"));
+    if let Some(v) = state_id
+        && !v.is_null()
+    {
+        m.insert("stateId".to_string(), v.clone());
+    }
+
+    let country_id = src
+        .get("country")
+        .and_then(|c| c.get("id"))
+        .or_else(|| src.get("countryId"));
+    if let Some(v) = country_id
+        && !v.is_null()
+    {
+        m.insert("countryId".to_string(), v.clone());
+    }
+
+    if m.is_empty() {
+        None
+    } else {
+        Some(Value::Object(m))
+    }
+}
+
 /// Build the JSON request body for `customers add-card`.
 ///
 /// `name` is optional; `pan`, `exp`, and `cvv` are required by the CLI flags.
@@ -568,6 +630,103 @@ mod tests {
     fn build_customer_body_no_fields_is_empty_object() {
         let body = build_customer_body(None, None, None, None, None);
         assert!(body.as_object().unwrap().is_empty());
+    }
+
+    // ── with_billing_address (ARISE-4706 AVS) ─────────────────────────────────
+
+    #[test]
+    fn with_billing_address_inserts_customer_keyed_address() {
+        let base = build_customer_body(Some("Ann"), None, None, None, None);
+        let billing =
+            crate::cli::address::billing_customer_json(&crate::cli::address::BillingArgs {
+                line1: Some("1 A St".into()),
+                city: Some("Denver".into()),
+                postal_code: Some("80202".into()),
+                country_id: Some(1),
+                ..Default::default()
+            });
+        let body = with_billing_address(base, billing);
+        assert_eq!(body["firstName"], "Ann");
+        // customer key spelling
+        assert_eq!(body["billingAddress"]["addressLine1"], "1 A St");
+        assert_eq!(body["billingAddress"]["zip"], "80202");
+        assert_eq!(body["billingAddress"]["countryId"], 1);
+    }
+
+    #[test]
+    fn with_billing_address_is_noop_when_none() {
+        let base = build_customer_body(Some("Ann"), None, None, None, None);
+        let body = with_billing_address(base, None);
+        assert!(body.get("billingAddress").is_none());
+    }
+
+    // ── billing_from_get_response: GET shape → update shape (ARISE-4706) ───────
+    // The GET response nests state/country objects and omits flat stateId/
+    // countryId; the update PUT wants the flat ids. Preserving via a raw copy
+    // would drop stateId/countryId and send stray objects, corrupting the
+    // address on an unrelated update.
+
+    fn get_shape_billing() -> Value {
+        json!({
+            "addressLine1": "123 Test St",
+            "addressLine2": null,
+            "city": "Denver",
+            "zip": "80202",
+            "stateName": "Colorado",
+            "state": { "id": 6, "code": "CO", "name": "Colorado" },
+            "country": { "id": 1, "isoCode": "US", "name": "United States" }
+        })
+    }
+
+    #[test]
+    fn billing_from_get_response_flattens_nested_state_and_country() {
+        let out = billing_from_get_response(&get_shape_billing()).expect("some");
+        // nested ids flattened to the update spelling
+        assert_eq!(out["stateId"], 6);
+        assert_eq!(out["countryId"], 1);
+        // scalar fields preserved
+        assert_eq!(out["addressLine1"], "123 Test St");
+        assert_eq!(out["city"], "Denver");
+        assert_eq!(out["zip"], "80202");
+        assert_eq!(out["stateName"], "Colorado");
+        // stray nested objects and null fields must NOT be sent back
+        assert!(out.get("state").is_none(), "nested state must be dropped");
+        assert!(
+            out.get("country").is_none(),
+            "nested country must be dropped"
+        );
+        assert!(out.get("addressLine2").is_none(), "null field dropped");
+    }
+
+    #[test]
+    fn billing_from_get_response_none_when_empty() {
+        assert!(billing_from_get_response(&json!({})).is_none());
+    }
+
+    #[test]
+    fn update_preserves_billing_across_unrelated_change() {
+        // Changing only the email must carry the existing address forward in the
+        // UPDATE (flat) shape — with stateId/countryId intact.
+        let current = json!({
+            "email": "old@example.com",
+            "billingAddress": get_shape_billing(),
+        });
+        let merged = merge_customer_update(
+            &current,
+            None,
+            None,
+            None,
+            Some("new@example.com".into()),
+            None,
+        );
+        let preserved = current
+            .get("billingAddress")
+            .and_then(billing_from_get_response);
+        let body = with_billing_address(merged, preserved);
+        assert_eq!(body["email"], "new@example.com");
+        assert_eq!(body["billingAddress"]["stateId"], 6);
+        assert_eq!(body["billingAddress"]["countryId"], 1);
+        assert!(body["billingAddress"].get("state").is_none());
     }
 
     // ── build_add_card_body ───────────────────────────────────────────────────

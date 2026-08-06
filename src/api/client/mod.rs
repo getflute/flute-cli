@@ -596,86 +596,12 @@ mod tests {
         );
     }
 
-    /// End-to-end guard: drive a real request through `send()` with a capturing
-    /// tracing subscriber and assert the raw PAN never reaches the log sink.
-    /// This protects against a future log site bypassing `redact_for_log`.
-    #[tokio::test(flavor = "current_thread")]
-    async fn debug_logging_masks_pan_through_the_real_send_path() {
-        use std::io::Write;
-        use std::sync::{Arc, Mutex};
-        use tracing_subscriber::fmt::MakeWriter;
-        use wiremock::{
-            Mock, MockServer, ResponseTemplate,
-            matchers::{method, path},
-        };
-
-        #[derive(Clone)]
-        struct Buf(Arc<Mutex<Vec<u8>>>);
-        struct BufGuard(Arc<Mutex<Vec<u8>>>);
-        impl Write for BufGuard {
-            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().unwrap().extend_from_slice(b);
-                Ok(b.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        impl<'a> MakeWriter<'a> for Buf {
-            type Writer = BufGuard;
-            fn make_writer(&'a self) -> Self::Writer {
-                BufGuard(self.0.clone())
-            }
-        }
-
-        let buf = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .with_ansi(false)
-            .with_writer(Buf(buf.clone()))
-            .finish();
-        let _guard = tracing::subscriber::set_default(subscriber);
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/redact-probe"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({ "panMask": "************1111" })),
-            )
-            .mount(&server)
-            .await;
-
-        let api = super::test_client(server.uri());
-        let _: Result<serde_json::Value, _> = api
-            .send(
-                reqwest::Method::POST,
-                "/redact-probe",
-                Some(json!({ "accountNumber": "4111111111111111", "securityCode": "123" })),
-            )
-            .await;
-
-        let logged = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
-        // Sanity: the request was actually traced, so the asserts below aren't vacuous.
-        assert!(
-            logged.contains("HTTP request"),
-            "expected a request trace to be captured, got: {logged}"
-        );
-        // The full PAN must never reach the log sink.
-        assert!(
-            !logged.contains("4111111111111111"),
-            "full PAN leaked into debug logs: {logged}"
-        );
-        // Masked PAN present → proves redaction ran (not that logging was skipped).
-        assert!(
-            logged.contains("************1111"),
-            "expected masked PAN in logs: {logged}"
-        );
-        // CVV redacted to *** (the only field here that maps to ***).
-        assert!(
-            logged.contains("***"),
-            "expected CVV to be redacted to ***: {logged}"
-        );
-    }
+    // NOTE: the end-to-end "real send() path redacts" guard lives in its own
+    // integration binary (`tests/redaction_e2e.rs`) so it runs in an isolated
+    // process. It manipulates the process-global tracing subscriber + callsite
+    // interest cache, which is inherently raced by the parallel in-process test
+    // runner (it flaked in CI with an empty capture). A dedicated single-test
+    // binary is deterministic.
 
     #[test]
     fn redact_for_log_on_realistic_sale_body_hides_pan_and_cvv() {

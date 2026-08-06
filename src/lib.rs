@@ -344,14 +344,14 @@ async fn dispatch_tokens(
         } => {
             if !yes {
                 anyhow::bail!(
-                    "revocation requires --yes to confirm (e.g. `tokens revoke --client-id {client_id} --merchant-id {merchant_id} --yes`)"
+                    "revocation requires --yes to confirm (e.g. `keys revoke --client-id {client_id} --merchant-id {merchant_id} --yes`)"
                 );
             }
             let (_p, api) = build_client(profile)?;
             treat_404_as_ok(api.revoke_token(&client_id, &merchant_id).await)?;
             match output_fmt {
                 cli::OutputFormat::Json => {} // empty stdout, exit 0
-                cli::OutputFormat::Table => println!("Revoked token {client_id}."),
+                cli::OutputFormat::Table => println!("Revoked key {client_id}."),
                 cli::OutputFormat::Quiet => println!("{client_id}"),
             }
             Ok(())
@@ -557,6 +557,7 @@ async fn dispatch_customers(
     use cli::customers::{
         build_add_ach_body, build_add_card_body, build_customer_body, merge_customer_update,
         render_customer, render_customer_list, render_payment_method, render_payment_methods,
+        with_billing_address,
     };
 
     match cc {
@@ -566,13 +567,32 @@ async fn dispatch_customers(
             email,
             company,
             mobile,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_state_id,
+            billing_postal_code,
+            billing_country_id,
         } => {
-            let body = build_customer_body(
-                first_name.as_deref(),
-                last_name.as_deref(),
-                company.as_deref(),
-                email.as_deref(),
-                mobile.as_deref(),
+            let billing = cli::address::BillingArgs {
+                line1: billing_line1,
+                line2: billing_line2,
+                city: billing_city,
+                state_name: billing_state,
+                state_id: billing_state_id,
+                postal_code: billing_postal_code,
+                country_id: billing_country_id,
+            };
+            let body = with_billing_address(
+                build_customer_body(
+                    first_name.as_deref(),
+                    last_name.as_deref(),
+                    company.as_deref(),
+                    email.as_deref(),
+                    mobile.as_deref(),
+                ),
+                cli::address::billing_customer_json(&billing),
             );
             let (p, api) = build_client(profile)?;
             let result = api.create_customer(body).await?;
@@ -599,6 +619,13 @@ async fn dispatch_customers(
             email,
             company,
             mobile,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_state_id,
+            billing_postal_code,
+            billing_country_id,
         } => {
             // GET-merge-PUT-re-GET pattern:
             // 1. GET current values so omitted flags retain their existing data.
@@ -607,10 +634,29 @@ async fn dispatch_customers(
             //    body, so update_customer returns () — no JSON to decode.
             // 4. GET the customer again (fresh) so we render the server's
             //    canonical post-update state rather than our local merge.
+            let billing = cli::address::BillingArgs {
+                line1: billing_line1,
+                line2: billing_line2,
+                city: billing_city,
+                state_name: billing_state,
+                state_id: billing_state_id,
+                postal_code: billing_postal_code,
+                country_id: billing_country_id,
+            };
             let (p, api) = build_client(profile)?;
             let current = api.get_customer(&id).await?;
-            let body =
+            // --billing-* flags replace the address wholesale; otherwise the
+            // customer's current billingAddress is preserved — remapped from the
+            // GET response shape (nested state/country) to the update shape
+            // (flat stateId/countryId), never copied verbatim. (ARISE-4706.)
+            let billing_json = cli::address::billing_customer_json(&billing).or_else(|| {
+                current
+                    .get("billingAddress")
+                    .and_then(cli::customers::billing_from_get_response)
+            });
+            let merged =
                 merge_customer_update(&current, first_name, last_name, company, email, mobile);
+            let body = with_billing_address(merged, billing_json);
             api.update_customer(&id, body).await?;
             let fresh = api.get_customer(&id).await?;
             render_customer(&fresh, output_fmt, &p.name)
@@ -865,6 +911,13 @@ async fn dispatch_transactions(
             l3_po,
             l3_product,
             reference_id,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_state_id,
+            billing_postal_code,
+            billing_country_id,
         } => {
             let m = parse_txn_money(&amount, tip_amount.as_deref(), l2_tax_rate.as_deref())?;
             execute_card_txn(
@@ -885,6 +938,15 @@ async fn dispatch_transactions(
                     l3_po,
                     l3_product,
                     reference_id,
+                    billing: cli::address::BillingArgs {
+                        line1: billing_line1,
+                        line2: billing_line2,
+                        city: billing_city,
+                        state_name: billing_state,
+                        state_id: billing_state_id,
+                        postal_code: billing_postal_code,
+                        country_id: billing_country_id,
+                    },
                 },
                 CardTxnKind::Sale,
             )
@@ -905,6 +967,13 @@ async fn dispatch_transactions(
             l3_po,
             l3_product,
             reference_id,
+            billing_line1,
+            billing_line2,
+            billing_city,
+            billing_state,
+            billing_state_id,
+            billing_postal_code,
+            billing_country_id,
         } => {
             let m = parse_txn_money(&amount, tip_amount.as_deref(), l2_tax_rate.as_deref())?;
             execute_card_txn(
@@ -925,6 +994,15 @@ async fn dispatch_transactions(
                     l3_po,
                     l3_product,
                     reference_id,
+                    billing: cli::address::BillingArgs {
+                        line1: billing_line1,
+                        line2: billing_line2,
+                        city: billing_city,
+                        state_name: billing_state,
+                        state_id: billing_state_id,
+                        postal_code: billing_postal_code,
+                        country_id: billing_country_id,
+                    },
                 },
                 CardTxnKind::Auth,
             )
@@ -1029,8 +1107,82 @@ async fn dispatch_transactions(
     }
 }
 
+/// Best-effort detection of `--output json` (flag wins over env) for use when
+/// argument parsing itself failed — so a usage error can still be surfaced as
+/// JSON on stdout for machine consumers.
+fn wants_json_output() -> bool {
+    let args: Vec<String> = std::env::args().collect();
+    for i in 0..args.len() {
+        if args[i] == "--output" {
+            return args
+                .get(i + 1)
+                .is_some_and(|v| v.eq_ignore_ascii_case("json"));
+        }
+        if let Some(v) = args[i].strip_prefix("--output=") {
+            return v.eq_ignore_ascii_case("json");
+        }
+    }
+    std::env::var("FLUTE_OUTPUT").is_ok_and(|v| v.eq_ignore_ascii_case("json"))
+}
+
+/// Strip ANSI escape sequences (clap colorizes errors on a TTY) so the JSON
+/// error message stays clean.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            for n in chars.by_ref() {
+                if n == 'm' {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Reduce a clap error to a concise, colorless message (drops the trailing
+/// "Usage: …" block) for the JSON error envelope.
+fn clap_error_message(e: &clap::Error) -> String {
+    let full = strip_ansi(&e.to_string());
+    match full.split_once("\n\nUsage:") {
+        Some((head, _)) => head.trim().to_string(),
+        None => full.trim().to_string(),
+    }
+}
+
 pub fn run() -> anyhow::Result<()> {
-    let cli = cli::Cli::parse();
+    // `try_parse` (not `parse`) so a usage error is handled on our terms:
+    // `--help`/`--version` still print to stdout and exit 0, but a genuine
+    // parse error becomes a client/validation error (exit 3, not clap's default
+    // 2 which collides with the auth code) and — under `--output json` — is
+    // emitted as a structured envelope on stdout for machine consumers.
+    let cli = match cli::Cli::try_parse() {
+        Ok(c) => c,
+        Err(e) => {
+            use clap::error::ErrorKind;
+            match e.kind() {
+                ErrorKind::DisplayHelp
+                | ErrorKind::DisplayVersion
+                | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => e.exit(),
+                _ => {
+                    if wants_json_output() {
+                        let err = anyhow::anyhow!("{}", clap_error_message(&e));
+                        let envelope = cli::output::ErrorJson::from_anyhow(&err);
+                        if let Ok(json) = serde_json::to_string_pretty(&envelope) {
+                            println!("{json}");
+                        }
+                    } else {
+                        eprint!("{e}");
+                    }
+                    std::process::exit(3);
+                }
+            }
+        }
+    };
     let profile = cli.profile.clone();
     let debug = cli.debug;
 
@@ -1096,7 +1248,7 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Devices(dc) => dispatch_devices(&profile, output_fmt, *dc).await,
             cli::Command::Pos(pc) => dispatch_pos(&profile, output_fmt, *pc).await,
             cli::Command::Settlements(sc) => dispatch_settlements(&profile, output_fmt, *sc).await,
-            cli::Command::Tokens(tc) => dispatch_tokens(&profile, output_fmt, *tc).await,
+            cli::Command::Keys(tc) => dispatch_tokens(&profile, output_fmt, *tc).await,
             cli::Command::Subscriptions(sc) => {
                 dispatch_subscriptions(&profile, output_fmt, *sc).await
             }

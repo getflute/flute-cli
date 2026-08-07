@@ -455,7 +455,7 @@ pub(crate) fn inspect_table(v: &serde_json::Value) -> String {
     let response_desc = get_str("responseDescription");
     let card_data_source = get_str("cardDataSource");
     let customer_pan = get_str("customerPan");
-    let avs_response = get_str("avsResponse");
+    let avs_response = format_avs(v.get("avsResponse"));
 
     // Amount breakdown from the nested AmountIsvDto object
     let (base_amount, surcharge_amount, tip_amount, total_amount) = match v.get("amount") {
@@ -511,6 +511,40 @@ pub(crate) fn inspect_table(v: &serde_json::Value) -> String {
     format!(
         "transactionId:       {txn_id}\nstatus:              {status}\ncurrency:            {currency}\nauthCode:            {auth_code}\nresponseCode:        {response_code}\nresponseDescription: {response_desc}\ncardDataSource:      {card_data_source}\ncustomerPan:         {customer_pan}\navsResponse:         {avs_response}\n\nAmount breakdown:\n  baseAmount:        {base_amount}\n  surchargeAmount:   {surcharge_amount}\n  tipAmount:         {tip_amount}\n  totalAmount:       {total_amount}\n\nAvailable operations: {ops}"
     )
+}
+
+/// Render the `avsResponse` field for the inspect table.
+///
+/// The API returns `avsResponse` as a structured object (`AvsResponseDto`) when
+/// AVS is enabled for the merchant/processor, or `null` otherwise. This renders
+/// it as a concise one-line summary — `CODE — Group / Result / Action —
+/// description` — using whichever sub-fields are present. `None`/`null` → "—".
+/// A bare string (older or unexpected shape) is passed through verbatim.
+pub(crate) fn format_avs(avs: Option<&serde_json::Value>) -> String {
+    match avs {
+        Some(serde_json::Value::Object(a)) => {
+            let s = |k: &str| a.get(k).and_then(|x| x.as_str());
+            let code = s("responseCode").unwrap_or("—");
+            let mut out = code.to_string();
+            let tags: Vec<&str> = ["group", "result", "action"]
+                .iter()
+                .filter_map(|k| s(k))
+                .collect();
+            if !tags.is_empty() {
+                out.push_str(" — ");
+                out.push_str(&tags.join(" / "));
+            }
+            if let Some(desc) = s("codeDescription") {
+                out.push_str(" — ");
+                out.push_str(desc);
+            }
+            out
+        }
+        // Backward-compat: a bare string (older/unexpected shape).
+        Some(serde_json::Value::String(s)) => s.clone(),
+        // null / absent / any other shape.
+        _ => "—".to_string(),
+    }
 }
 
 // ── CLI handlers ─────────────────────────────────────────────────────────────
@@ -737,7 +771,16 @@ mod golden {
             "responseDescription": "Approved",
             "cardDataSource": "Internet",
             "customerPan": "411111XXXXXX1111",
-            "avsResponse": "Y",
+            "avsResponse": {
+                "responseCode": "Y",
+                "action": "Allow",
+                "actionId": 1,
+                "group": "ValidGroup",
+                "groupId": 5,
+                "result": "Passed",
+                "resultId": 1,
+                "codeDescription": "Address and ZIP match."
+            },
             "amount": {
                 "baseAmount": 100.00,
                 "surchargeAmount": 1.50,
@@ -1615,7 +1658,16 @@ mod tests {
             "responseDescription": "Approved",
             "cardDataSource": "Internet",
             "customerPan": "411111XXXXXX1111",
-            "avsResponse": "Y",
+            "avsResponse": {
+                "responseCode": "A",
+                "action": "Allow",
+                "actionId": 1,
+                "group": "PartialMatch",
+                "groupId": 2,
+                "result": "Failed",
+                "resultId": 2,
+                "codeDescription": "Street Address matches the information on file but ZIP Code does not match or it was not provided."
+            },
             "amount": {
                 "baseAmount": 95.00,
                 "surchargeAmount": 2.50,
@@ -1649,7 +1701,48 @@ mod tests {
             table.contains("411111XXXXXX1111"),
             "must contain customerPan"
         );
-        assert!(table.contains("Y"), "must contain avsResponse");
+        // avsResponse is an object (AvsResponseDto): the table must surface its
+        // fields, not drop it as it did when read as a string.
+        assert!(table.contains("A"), "must contain the raw AVS code");
+        assert!(table.contains("PartialMatch"), "must contain the AVS group");
+    }
+
+    // ── format_avs (AvsResponseDto rendering) ─────────────────────────────────
+
+    #[test]
+    fn format_avs_renders_object_fields() {
+        let v = json!({
+            "responseCode": "A", "action": "Allow", "actionId": 1,
+            "group": "PartialMatch", "groupId": 2, "result": "Failed", "resultId": 2,
+            "codeDescription": "Street Address matches the information on file but ZIP Code does not match or it was not provided."
+        });
+        let out = format_avs(Some(&v));
+        assert!(out.contains("A"), "raw code: {out}");
+        assert!(out.contains("PartialMatch"), "group: {out}");
+        assert!(out.contains("Failed"), "result: {out}");
+        assert!(out.contains("Allow"), "action: {out}");
+        assert!(
+            out.contains("ZIP Code does not match"),
+            "description: {out}"
+        );
+    }
+
+    #[test]
+    fn format_avs_null_and_absent_are_dash() {
+        assert_eq!(format_avs(Some(&Value::Null)), "—");
+        assert_eq!(format_avs(None), "—");
+    }
+
+    #[test]
+    fn format_avs_bare_string_passthrough() {
+        assert_eq!(format_avs(Some(&json!("Y"))), "Y");
+    }
+
+    #[test]
+    fn format_avs_object_missing_optional_fields_uses_code_only() {
+        // Only a responseCode present → no trailing " — " noise.
+        let out = format_avs(Some(&json!({ "responseCode": "Z" })));
+        assert_eq!(out, "Z");
     }
 
     #[test]

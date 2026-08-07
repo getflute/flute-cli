@@ -6,7 +6,7 @@ responseCode:        00
 responseDescription: Approved
 cardDataSource:      Internet
 customerPan:         411111XXXXXX1111
-avsResponse:         Y
+avsResponse:         Y — ValidGroup / Passed / Allow — Address and ZIP match.
 
 Amount breakdown:
   baseAmount:        100.00

@@ -1,5 +1,7 @@
 # flute
 
+[![CI](https://github.com/getflute/flute-cli/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/getflute/flute-cli/actions/workflows/ci.yml)
+
 `flute` — a cross-platform CLI for the Flute payments platform. MIT licensed, built in Rust.
 
 ---

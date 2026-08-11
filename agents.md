@@ -23,8 +23,11 @@ and the process exits non-zero. **Parse one stream, never both.** Do not invoke 
 |---|---|
 | `--profile <name>` | `sandbox` (default) or `production`/`prod`. Env: `FLUTE_PROFILE`. |
 | `--output <fmt>` | `json` (use this), `table` (human, default), `quiet` (resource id only). Falls back to `~/.flute/config.toml` `output`, then `table`. |
-| `--merchant-id <uuid>` | ISV merchant context (currently only API-key management endpoints scope by it). |
 | `--debug` | Verbose HTTP request/response to **stderr** (sensitive fields redacted). For agents, prefer `--output json` + the `correlation_id`; only use `--debug` when an operator is investigating. |
+
+There is **no global `--merchant-id`** (it was removed in v0.1.4 — passing it is a parse
+error, exit 3). Merchant scoping is per-command: see `keys create|list|revoke` below. Every
+other endpoint resolves the merchant server-side from the token principal.
 
 `--output json` also suppresses the "newer version available" notice and never emits it to a
 non-TTY/CI stream — JSON stdout stays pure.

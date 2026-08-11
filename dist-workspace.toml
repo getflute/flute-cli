@@ -1,6 +1,6 @@
-# TODO: the repo/tap coordinates below are placeholders — confirm before the first real release.
 # After installing cargo-dist, run `dist init` to confirm settings, then `dist generate` to
-# regenerate .github/workflows/release.yml from the canonical template.
+# regenerate .github/workflows/release.yml from the canonical template. release.yml MUST stay
+# cargo-dist-generated or `dist plan` fails its self-consistency check in CI.
 
 [workspace]
 members = ["cargo:."]
@@ -33,7 +33,6 @@ install-updater = false
 # the tap. Without this block, cargo-dist only attaches the .rb file to the
 # Release page; brew users have to install via direct URL instead of
 # `brew install getflute/flute-cli/flute`.
-# TODO: confirm tap name before first release
 tap = "getflute/homebrew-flute-cli"
 publish-jobs = ["homebrew"]
 

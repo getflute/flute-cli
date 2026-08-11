@@ -69,7 +69,7 @@ flute transactions sale \
 
 - `table` — human-readable (default)
 - `json` — structured envelope, suitable for scripts and agents
-- `quiet` — resource id only, one per line; ideal for shell capture: `TXN=$(flute … sale -q)`
+- `quiet` — resource id only, one per line; ideal for shell capture: `TXN=$(flute --output quiet transactions sale --amount 10.00 …)`
 
 ---
 

@@ -5,7 +5,6 @@ edition = "2024"
 description = "Cross-platform CLI for the Flute payments platform"
 license = "MIT"
 readme = "readme.md"
-# TODO: confirm these coordinates before the first real release
 repository = "https://github.com/getflute/flute-cli"
 homepage = "https://github.com/getflute/flute-cli"
 

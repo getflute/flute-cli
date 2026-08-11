@@ -20,22 +20,43 @@ pub mod util;
 
 pub use output::OutputFormat;
 
+/// Help section the three `global = true` flags are grouped under.
+///
+/// Without an explicit heading clap files global args into each subcommand's
+/// own `Options:` block in declaration order, so on a flag-heavy leaf like
+/// `transactions sale` they interleave with the command's real flags
+/// (`--amount`, `--profile`, `--card`, `--output`, …). A shared heading keeps
+/// them in one clearly-labelled section at the end of every `--help`.
+const GLOBAL_HEADING: &str = "Global options";
+
 #[derive(Parser, Debug)]
 #[command(name = "flute", version, about = "CLI for the Flute payments platform")]
 pub struct Cli {
     /// Active profile (environment). `sandbox` (default) or `production`/`prod`.
-    #[arg(long, env = "FLUTE_PROFILE", default_value = "sandbox", global = true)]
+    #[arg(
+        long,
+        env = "FLUTE_PROFILE",
+        default_value = "sandbox",
+        global = true,
+        help_heading = GLOBAL_HEADING
+    )]
     pub profile: String,
 
     /// Output format: table (default), json, or quiet (id only).
     /// When omitted, falls back to the `FLUTE_OUTPUT` env var, then to the
     /// `output` key in ~/.flute/config.toml, then to `table`.
-    #[arg(long, global = true, value_enum, env = "FLUTE_OUTPUT")]
+    #[arg(
+        long,
+        global = true,
+        value_enum,
+        env = "FLUTE_OUTPUT",
+        help_heading = GLOBAL_HEADING
+    )]
     pub output: Option<OutputFormat>,
 
     /// Print HTTP request/response traces to stderr. Card and bank-account
     /// numbers are masked to the last 4 digits; CVV/security codes are removed.
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = GLOBAL_HEADING)]
     pub debug: bool,
 
     #[command(subcommand)]

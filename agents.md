@@ -12,10 +12,18 @@ FLUTE_CLIENT_ID=… FLUTE_CLIENT_SECRET=… FLUTE_PROFILE=sandbox \
   flute --output json transactions list --limit 5
 ```
 
-Every non-interactive command accepts `--output json`. On success the response is the
-JSON envelope on **stdout**. On failure a structured `ErrorJson` is printed to **stdout**
-and the process exits non-zero. **Parse one stream, never both.** Do not invoke `auth login`
-(interactive) from an agent — use the env vars above.
+`--output json` is honoured by the **API resource commands** — the `transactions`, `ach`,
+`customers`, `terminals`, `devices`, `pos`, `settlements`, `subscriptions` and `keys` groups,
+plus `ping`, `version` and `auth status`. On success these **normally** print the JSON
+envelope on **stdout** — a few mutating verbs succeed with empty stdout instead, documented
+below. On failure they print a structured `ErrorJson` on **stdout** and exit non-zero.
+**Parse one stream, never both.**
+
+Before writing a parser, read
+[Commands with no JSON success output](#commands-with-no-json-success-output): several
+commands emit plain text or nothing at all on success even in JSON mode, and two non-zero
+exits carry no `ErrorJson`. Do not invoke `auth login` (interactive) from an agent — use the
+env vars above.
 
 ## Global flags
 
@@ -41,15 +49,30 @@ non-TTY/CI stream — JSON stdout stays pure.
 - `object` values: `transaction`, `transaction_list`, `customer`, `customer_list`, `payment_method`,
   `payment_methods`, `pos_transaction`, `pos_transaction_list`, `terminal_list`, `terminal_status`,
   `device`, `device_list`, `tap_to_pay_jwt`, `settlement`, `settlement_list`, `subscription`,
-  `subscription_list`, `subscription_payments`, `api_token`, `api_token_list`, `ping`, `version`.
+  `subscription_list`, `subscription_payments`, `api_token`, `api_token_list`, `auth_status`,
+  `ping`, `version`.
 - `--output quiet` prints **only the resource id** (one per line for lists) — ideal for
-  `TXN=$(flute … sale -q)` chaining.
+  chaining: `TXN=$(flute --output quiet transactions sale --amount 10.00 …)`. Note there is
+  **no `-q` short flag** (the CLI defines no short flags beyond `-h`/`-V`); spell it
+  `--output quiet` or set `FLUTE_OUTPUT=quiet`.
 
 ### Failure (`--output json`)
 ```json
 { "kind": "api"|"transport"|"auth"|"decode"|"client", "message": "…", "status": 422, "correlation_id": "…" }
 ```
 `status` and `correlation_id` appear only for `kind:"api"`. Branch on `kind` first, then `status`:
+
+> **A non-zero exit does not always carry an `ErrorJson`.** Both known cases are in
+> `pos create --wait`:
+> * **timeout** — under `--output json` the CLI prints the last-known **success** envelope
+>   (`object:"pos_transaction"`) to stdout, a warning to stderr, and exits **1**. Under
+>   `table`/`quiet` it renders the table / bare id instead.
+> * **Ctrl-C (SIGINT)** — the last-known status goes to **stderr** only; stdout stays
+>   **empty** in every output mode, and the CLI exits **130**.
+>
+> So don't infer the shape of stdout from the exit code. If stdout is empty, go by the exit
+> code alone; if it parses, check for a `kind` field before treating it as an error. See
+> [POS](#pos--terminals--devices).
 
 | `kind` | meaning | retry? |
 |---|---|---|
@@ -61,6 +84,41 @@ non-TTY/CI stream — JSON stdout stays pure.
 | `auth` | no credentials / OAuth handshake failed | no — operator must configure creds |
 | `decode` | CLI bug or server contract change | no — surface for investigation |
 | `client` | bad CLI args / input validation | no — fix the invocation |
+
+### Commands with no JSON success output
+
+These commands are local or plain-text: **on success** they emit no JSON in any output mode,
+so don't feed their success output to a parser.
+
+**Their failures are still JSON.** Every command routes errors through the same central
+handler, so under `--output json` a failure prints an `ErrorJson` on stdout and exits
+non-zero — e.g. `flute --output json auth switch garbage` →
+`{"kind":"client","message":"unknown profile: garbage"}`, exit 3. So the rule is
+success-only: parse the failure envelope for every command, but expect plain text on success
+for these.
+
+| Command | Stdout **on success**, even with `--output json` |
+|---|---|
+| `completion <shell>` | raw shell completion script |
+| `update` | plain text (e.g. `Already on the latest version (1.1.1).`) |
+| `auth switch <profile>` | plain text (`Default profile set to [production].`) |
+| `auth logout` | plain text |
+| `auth token` | the raw bearer token on one line, no envelope |
+| `auth login` | interactive prompts — never call this from an agent |
+
+`auth status` is the one `auth` verb that *does* emit an envelope (`object:"auth_status"`).
+
+And three mutating verbs **succeed** with empty stdout under `--output json` — treat `exit 0`
+plus empty stdout as success, not as a truncated response. (Their failures, again, come back
+as a normal `ErrorJson`.)
+
+| Command | Success under `--output json` |
+|---|---|
+| `customers delete <id> --yes` | exit 0, empty stdout |
+| `customers remove-method <id> <mid> --yes` | exit 0, empty stdout |
+| `keys revoke --client-id … --merchant-id … --yes` | exit 0, empty stdout |
+
+(In `table` mode these print a confirmation line; in `quiet` mode, the affected id.)
 
 ### Exit codes
 `0` success · `1` general/unexpected (transport, decode, server 5xx) · `2` auth (401/403, missing creds) · `3` validation / bad input (server 400/422, **client-side validation, and CLI usage/parse errors**) · `4` not found (404). Under `--output json`, usage/parse errors are still emitted as a `{kind:"client"}` envelope on stdout.
@@ -102,7 +160,8 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
   `--account-holder-type business|personal`, `--billing-line1`, `--billing-city`, `--billing-state`,
   `--billing-state-id <int>` (**numeric state id required**; free-text alone is rejected),
   `--billing-postal-code`, `--billing-country-id 1` (US), `--contact-first-name`, `--contact-last-name`,
-  `--contact-email`, `--contact-phone` (**required**), `--sec-code` (default 1=Web), `--requester-ip` (default 127.0.0.1).
+  `--contact-email`, `--contact-phone` (**required**), `--contact-company` (optional → `companyName`),
+  `--sec-code` (default 1=Web), `--requester-ip` (default 127.0.0.1).
 - `void`/`refund` take a positional `<id>` (bodyless).
 
 ### Customers / Vault — `flute customers …`
@@ -123,7 +182,7 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 - `flute terminals list` / `status <id>`. Terminal must be **SemiIntegrated** mode + Online to accept POS transactions (Standalone → 400).
 - `flute pos create` flags: `--terminal-id` (required), `--amount`, `--pos-device-id` (**required**),
   `--reference-id` (**required**), `--currency-id` (default 1), `--transaction-type` (default 2=Sale; 1=Auth,3=Capture,4=Void,5=Refund), `--tip-amount`, `--tip-rate`, `--customer-id`, `--payment-processor-id`, `--target-transaction-id`, `--reading-method`, `--wait`, `--wait-timeout` (default 120).
-  - `--wait` long-polls `GET /pos-transactions/{id}` until `isCompleted:true` (terminal finished) or timeout. On **timeout**: the CLI prints the **last-known transaction JSON envelope to stdout** (not an ErrorJson) then a warning to stderr and exits 1. On **Ctrl-C**: exits 130. Exit 0 on successful completion. **A terminal allows only one in-progress POS transaction** (else 400 "already in progress") — always `cancel` or complete before starting another.
+  - `--wait` long-polls `GET /pos-transactions/{id}` until `isCompleted:true` (terminal finished) or timeout. On **timeout** with `--output json`: the CLI prints the **last-known success envelope** (`object:"pos_transaction"`, *not* an `ErrorJson`) to stdout, then a warning to stderr, and exits 1 — in `table`/`quiet` mode it renders the table / bare id instead. On **Ctrl-C**: the last-known status goes to **stderr only**, stdout stays empty in every mode, and it exits 130. Exit 0 on successful completion. **A terminal allows only one in-progress POS transaction** (else 400 "already in progress") — always `cancel` or complete before starting another.
   - **Field-name split:** create/cancel responses use `posTransactionId` + `status`; get/list use `id` + `posTransactionStatus`. (The CLI normalizes both for table/quiet.)
 - `flute pos get <id>` / `list` (`--terminal-id`, `--limit`, `--page`) / `cancel <id>`.
 - `flute devices list` / `get <id>` / `register <id> [--name]` (`--name` is optional) / `ttp-jwt --device-id <id>` (returns `tap_to_pay_jwt` envelope object) / `ttp-activate <id>`. Device records use `deviceId` (not `id`) and `tapToPayStatus`.

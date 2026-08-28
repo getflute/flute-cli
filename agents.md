@@ -144,8 +144,21 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
   `--l3-product` (repeatable, `Description,SKU,UnitPrice,UnitOfMeasure,Quantity`), `--reference-id`.
 - `sale`/`auth` **AVS billing** (ARISE-4706): `--billing-line1`, `--billing-line2`, `--billing-city`,
   `--billing-state`, `--billing-state-id <int>`, `--billing-postal-code`, `--billing-country-id <int>`
-  — emitted as `billingAddress` only when at least one is set. Supply at least city + country id for AVS;
-  omitting the address can cause AVS-sensitive processors to **decline** the transaction.
+  — emitted as `billingAddress` only when at least one is set. **Only a street line and the ZIP
+  feed card AVS**: the gateway's pre-sale check (`AvsService`) matches `line1 ?? line2` plus
+  `postalCode`, so `--billing-line2` participates when `--billing-line1` is absent — the
+  authorization sent on to the processor carries line 1 only. City, state and country are stored
+  on the transaction but never matched, so supply a street line + ZIP for AVS coverage.
+  No billing field is required — including the ZIP, which is only length-checked when supplied —
+  and the rules are **per card-data-source**: under the CLI default `--card-data-source 1`
+  (Internet) a supplied ZIP must be 5+ characters and `--billing-state-id` must belong to
+  `--billing-country-id` (checked only when both are set); for card-present sources (2–7) a
+  supplied ZIP need only be 2+ characters and the state/country check is skipped. The one case
+  that makes a field mandatory is `--card-data-source 7` (Manual), which additionally requires a
+  ZIP when the merchant has AVS enabled.
+  A partial address (city alone, say) is accepted. Omitting the address entirely can still cause
+  AVS-sensitive processors to **decline** the transaction. The stricter "city + country id
+  required" rule is **ACH-only** (see `flute ach`), not card.
 - `capture`/`void`/`refund`/`tip-adjust` take `--transaction-id`; `refund`/`capture` accept optional `--amount`; `tip-adjust` takes `--tip-amount`.
 - `settle` takes `--payment-processor-id` (**batch-level** — settles the processor's open batch, NOT a single txn).
 - `list` flags: `--limit`(→pageSize), `--page`, `--unsettled`; `--status`/`--from`/`--to` filter the returned page **client-side** (not server params).

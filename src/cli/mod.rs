@@ -190,25 +190,35 @@ pub enum TransactionsCommand {
         #[arg(long)]
         reference_id: Option<String>,
 
-        /// AVS billing street line 1.
+        /// AVS billing street line 1 — the street value the AVS check matches; pair it
+        /// with `--billing-postal-code`.
         #[arg(long)]
         billing_line1: Option<String>,
-        /// AVS billing street line 2.
+        /// AVS billing street line 2 — the AVS check falls back to this as the street
+        /// value when `--billing-line1` is unset; the authorization sent to the
+        /// processor carries line 1 only.
         #[arg(long)]
         billing_line2: Option<String>,
-        /// AVS billing city (the API requires city + country when any billing field is set).
+        /// AVS billing city (optional; not matched by AVS and not required by the API).
         #[arg(long)]
         billing_city: Option<String>,
-        /// AVS billing state name (e.g. `CO`).
+        /// AVS billing state name (e.g. `CO`; not matched by AVS).
         #[arg(long)]
         billing_state: Option<String>,
-        /// AVS billing numeric state id.
+        /// AVS billing numeric state id. Under the default `--card-data-source 1`
+        /// (Internet) it is rejected when it does not belong to `--billing-country-id`,
+        /// and unchecked unless that flag is set too; card-present sources skip the check.
         #[arg(long)]
         billing_state_id: Option<i32>,
-        /// AVS billing postal / ZIP code.
+        /// AVS billing postal / ZIP code — the other AVS-matched field. Optional: a ZIP is
+        /// only length-checked when supplied — at least 5 characters under the default
+        /// `--card-data-source 1` (Internet), at least 2 for card-present sources.
+        /// `--card-data-source 7` (Manual) additionally requires a ZIP when the merchant
+        /// has AVS enabled.
         #[arg(long)]
         billing_postal_code: Option<String>,
-        /// AVS billing numeric country id (e.g. 1 = US; required with city when any billing field is set).
+        /// AVS billing numeric country id (e.g. 1 = US). Optional; only checked alongside
+        /// `--billing-state-id`, under the default `--card-data-source 1` (Internet).
         #[arg(long)]
         billing_country_id: Option<i32>,
     },
@@ -272,25 +282,35 @@ pub enum TransactionsCommand {
         #[arg(long)]
         reference_id: Option<String>,
 
-        /// AVS billing street line 1.
+        /// AVS billing street line 1 — the street value the AVS check matches; pair it
+        /// with `--billing-postal-code`.
         #[arg(long)]
         billing_line1: Option<String>,
-        /// AVS billing street line 2.
+        /// AVS billing street line 2 — the AVS check falls back to this as the street
+        /// value when `--billing-line1` is unset; the authorization sent to the
+        /// processor carries line 1 only.
         #[arg(long)]
         billing_line2: Option<String>,
-        /// AVS billing city (the API requires city + country when any billing field is set).
+        /// AVS billing city (optional; not matched by AVS and not required by the API).
         #[arg(long)]
         billing_city: Option<String>,
-        /// AVS billing state name (e.g. `CO`).
+        /// AVS billing state name (e.g. `CO`; not matched by AVS).
         #[arg(long)]
         billing_state: Option<String>,
-        /// AVS billing numeric state id.
+        /// AVS billing numeric state id. Under the default `--card-data-source 1`
+        /// (Internet) it is rejected when it does not belong to `--billing-country-id`,
+        /// and unchecked unless that flag is set too; card-present sources skip the check.
         #[arg(long)]
         billing_state_id: Option<i32>,
-        /// AVS billing postal / ZIP code.
+        /// AVS billing postal / ZIP code — the other AVS-matched field. Optional: a ZIP is
+        /// only length-checked when supplied — at least 5 characters under the default
+        /// `--card-data-source 1` (Internet), at least 2 for card-present sources.
+        /// `--card-data-source 7` (Manual) additionally requires a ZIP when the merchant
+        /// has AVS enabled.
         #[arg(long)]
         billing_postal_code: Option<String>,
-        /// AVS billing numeric country id (e.g. 1 = US; required with city when any billing field is set).
+        /// AVS billing numeric country id (e.g. 1 = US). Optional; only checked alongside
+        /// `--billing-state-id`, under the default `--card-data-source 1` (Internet).
         #[arg(long)]
         billing_country_id: Option<i32>,
     },

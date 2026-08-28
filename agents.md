@@ -163,6 +163,15 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
 - `settle` takes `--payment-processor-id` (**batch-level** — settles the processor's open batch, NOT a single txn).
 - `list` flags: `--limit`(→pageSize), `--page`, `--unsettled`; `--status`/`--from`/`--to` filter the returned page **client-side** (not server params).
 - `inspect <id>` is a rich client-composed view; reads the API's `availableOperations` (accepts operation objects with a `type` field **or** bare strings).
+- **Two response shapes.** `POST sale`/`auth` return `AuthorizationResponseDto` and
+  `capture`/`void`/`refund`/`tip-adjust` return `TransactionResponseIsvDto`: these carry
+  `transactionId`, `status`, `processedAmount`, a `details` object (`authCode`, `code`, `message`,
+  `hostResponseCode`, `hostResponseMessage`, `maskedPan`) and a nested `transactionReceipt`.
+  `GET {id}` (and `inspect`) instead return `GetIsvTransactionResponseDto`, which **is** the receipt
+  — there `amount` (object with `totalAmount`), `authCode` and `responseDescription` sit at the top
+  level. Only `transactionId` and `status` appear at the top level of both. When reading JSON, take
+  the amount from `amount.totalAmount` on a GET and from `processedAmount` (or
+  `transactionReceipt.amount.totalAmount`) on a POST; the table renderer resolves both.
 - **AVS result (`avsResponse`):** a **structured object** (not a string), present only when AVS is enabled for the merchant/processor — otherwise `null`. Shape: `{ responseCode (raw AVS code, e.g. "Y"/"A"/"Z"/"N"), action ("Allow"|"Deny"), group ("NoMatch"|"PartialMatch"|"Incompatible"|"Unavailable"|"ValidGroup"), result ("Passed"|"Failed"), codeDescription (human text), plus int enums actionId/groupId/resultId }`. It appears on `sale`/`auth`/`get`/`inspect` responses (top-level; `transactionReceipt.avsResponse` may stay `null`). Read the full object from `--output json`; the `inspect` table summarizes it as `code — group / result / action — description` (or `—` when null). **A transaction can be Approved even when `result` is "Failed"** if the merchant's AVS `action` is "Allow" — treat `avsResponse` as advisory and enforce your own policy on `responseCode`/`group` if needed.
 - **Reading current state:** derive a transaction's current state **only** from `status`/`statusId` plus `availableOperations` — **not** from `transactionType` or `operationType`. Both are sticky to the *original* operation: after a `void`, the record still reads `transactionType:"Sale"` and `operationType:"PayNow"`, while `status` becomes `"Voided"` and `availableOperations` becomes `[]`. `void`/`refund` update `status` in place (same `transactionId`); the API exposes **no** `lastOperationType`, `voidedAt`/`refundedAt`, or operations-history field, and `transactionDateTime` stays the original timestamp. Rule of thumb: `availableOperations` lists what you *can* still do, `status` tells you what *happened*, `transactionType` only tells you what it originally *was*.
 

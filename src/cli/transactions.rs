@@ -216,9 +216,49 @@ pub(crate) fn transaction_quiet(v: &Value) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Format an amount value: an `AmountIsvDto` object (read `totalAmount`), a bare
+/// JSON number, or a string. Returns `None` for null/absent/unreadable values so
+/// callers can fall through to the next candidate field.
+fn amount_display(v: &Value) -> Option<String> {
+    match v {
+        Value::Object(obj) => obj
+            .get("totalAmount")
+            .and_then(|a| a.as_f64())
+            .map(|f| format!("{f:.2}")),
+        Value::Number(n) => n.as_f64().map(|f| format!("{f:.2}")),
+        Value::String(s) => Some(s.clone()),
+        Value::Null => None,
+        other => Some(other.to_string()),
+    }
+}
+
+/// Non-empty string at `key` within `parent`, if present. Empty strings are
+/// treated as absent so a blank field falls through to the next candidate.
+fn non_empty_str<'a>(parent: Option<&'a Value>, key: &str) -> Option<&'a str> {
+    parent?
+        .get(key)
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+}
+
 /// Build the "table" output string with key transaction fields.
 ///
 /// Fields shown: transactionId, status, amount (totalAmount), authCode, responseDescription.
+///
+/// The API spells these differently across the two transaction response shapes,
+/// so each field is resolved through a fallback chain (ARISE-4706 follow-up):
+///
+/// * `GET /pay-api/v1/transactions/{id}` returns `GetIsvTransactionResponseDto`,
+///   which extends `TransactionReceiptIsvDto` — `amount`, `authCode` and
+///   `responseDescription` sit at the **top level**.
+/// * `POST …/sale` and `…/auth` return `AuthorizationResponseDto`, and
+///   `capture`/`void`/`refund`/`tip-adjust` return `TransactionResponseIsvDto`.
+///   Neither carries those top-level keys. The same values live under the
+///   always-populated `transactionReceipt`, the auth code and host message are
+///   also in `details`, and the authorised total is `processedAmount`.
+///
+/// Only `transactionId` and `status` exist in both shapes, which is why a sale
+/// used to render every other field as "—".
 pub(crate) fn transaction_table(v: &Value) -> String {
     let txn_id = v
         .get("transactionId")
@@ -228,26 +268,28 @@ pub(crate) fn transaction_table(v: &Value) -> String {
 
     let status = v.get("status").and_then(|x| x.as_str()).unwrap_or("—");
 
-    // amount field may be an object (AmountIsvDto), a JSON number, a string, or absent/null
-    let amount = match v.get("amount") {
-        Some(Value::Object(obj)) => obj
-            .get("totalAmount")
-            .and_then(|a| a.as_f64())
-            .map(|f| format!("{f:.2}"))
-            .unwrap_or_else(|| "—".to_string()),
-        Some(Value::Number(n)) => n
-            .as_f64()
-            .map(|f| format!("{f:.2}"))
-            .unwrap_or_else(|| "—".to_string()),
-        Some(Value::String(s)) => s.clone(),
-        Some(Value::Null) | None => "—".to_string(),
-        Some(other) => other.to_string(),
-    };
+    let receipt = v.get("transactionReceipt");
+    let details = v.get("details");
 
-    let auth_code = v.get("authCode").and_then(|x| x.as_str()).unwrap_or("—");
-    let response_desc = v
-        .get("responseDescription")
-        .and_then(|x| x.as_str())
+    let amount = v
+        .get("amount")
+        .and_then(amount_display)
+        .or_else(|| receipt?.get("amount").and_then(amount_display))
+        .or_else(|| v.get("processedAmount").and_then(amount_display))
+        .unwrap_or_else(|| "—".to_string());
+
+    let auth_code = non_empty_str(Some(v), "authCode")
+        .or_else(|| non_empty_str(receipt, "authCode"))
+        .or_else(|| non_empty_str(details, "authCode"))
+        .unwrap_or("—");
+
+    // `TransactionReceiptBuilder` fills responseDescription from the response
+    // event's HostResponseMessage (falling back to ResponseMessage), so `details`
+    // carries the same text under its own names when no receipt is present.
+    let response_desc = non_empty_str(Some(v), "responseDescription")
+        .or_else(|| non_empty_str(receipt, "responseDescription"))
+        .or_else(|| non_empty_str(details, "hostResponseMessage"))
+        .or_else(|| non_empty_str(details, "message"))
         .unwrap_or("—");
 
     format!(
@@ -746,18 +788,49 @@ mod golden {
 
     // ── Representative fixtures ──────────────────────────────────────────────
 
+    /// A representative `POST /pay-api/v1/transactions/sale` response.
+    ///
+    /// This mirrors `AuthorizationResponseDto` as the API actually returns it:
+    /// no top-level `amount`/`authCode`/`responseDescription`, the receipt
+    /// fields nested under `transactionReceipt`, the auth code and host message
+    /// also in `details`, and the authorised total as `processedAmount`. The
+    /// previous version of this fixture invented a top-level shape the sale
+    /// endpoint never returns, which is why the golden test passed while the
+    /// real command printed "—" for those three fields.
     fn sale_response() -> Value {
         json!({
             "transactionId": "txn-sale-golden-001",
+            "transactionDateTime": "2026-08-28T17:49:00Z",
+            "typeId": 1,
+            "type": "Sale",
+            "statusId": 2,
             "status": "Approved",
-            "amount": {
-                "totalAmount": 125.50,
-                "baseAmount": 120.00,
-                "surchargeAmount": 2.00,
-                "tipAmount": 3.50
+            "processedAmount": 125.50,
+            "avsResponse": null,
+            "details": {
+                "authCode": "GOLD42",
+                "code": "Approve",
+                "hostResponseCode": "00",
+                "hostResponseDefinition": null,
+                "hostResponseMessage": "Approved",
+                "maskedPan": "************1111",
+                "message": "Approved",
+                "processorResponseCode": "00"
             },
-            "authCode": "GOLD42",
-            "responseDescription": "Approved"
+            "transactionReceipt": {
+                "transactionId": "txn-sale-golden-001",
+                "amount": {
+                    "baseAmount": 120.00,
+                    "surchargeAmount": 2.00,
+                    "tipAmount": 3.50,
+                    "totalAmount": 125.50
+                },
+                "authCode": "GOLD42",
+                "avsResponse": null,
+                "responseCode": "00",
+                "responseDescription": "Approved",
+                "status": "Approved"
+            }
         })
     }
 
@@ -1198,6 +1271,101 @@ mod tests {
     fn transaction_quiet_returns_none_when_no_id() {
         let v = json!({ "status": "Approved" });
         assert_eq!(transaction_quiet(&v), None);
+    }
+
+    /// The real shape of a `POST /pay-api/v1/transactions/sale` (and `/auth`)
+    /// response: `AuthorizationResponseDto`, which does NOT carry top-level
+    /// `amount`/`authCode`/`responseDescription` the way the GET receipt does.
+    /// The authorised total is `processedAmount`; the receipt fields live under
+    /// `transactionReceipt`; the auth code and message also appear in `details`.
+    fn sale_post_response() -> Value {
+        json!({
+            "transactionId": "d58b1726-0ea3-441c-8bd4-6f3ab641c246",
+            "transactionDateTime": "2026-08-28T17:49:00Z",
+            "typeId": 1,
+            "type": "Sale",
+            "statusId": 2,
+            "status": "Captured",
+            "processedAmount": 100.00,
+            "avsResponse": {
+                "action": "Allow",
+                "actionId": 1,
+                "codeDescription": "Neither the Street Address or ZIP Code match the information on file.",
+                "group": "NoMatch",
+                "groupId": 1,
+                "responseCode": "N",
+                "result": "Failed",
+                "resultId": 2
+            },
+            "details": {
+                "authCode": "TST938",
+                "code": "Approve",
+                "hostResponseCode": "00",
+                "hostResponseDefinition": null,
+                "hostResponseMessage": "APPROVAL",
+                "maskedPan": "************1111",
+                "message": "Approved",
+                "processorResponseCode": "00"
+            },
+            "transactionReceipt": {
+                "transactionId": "d58b1726-0ea3-441c-8bd4-6f3ab641c246",
+                "amount": {
+                    "baseAmount": 100.00,
+                    "surchargeAmount": 0.0,
+                    "tipAmount": 0.0,
+                    "totalAmount": 100.00
+                },
+                "authCode": "TST938",
+                "avsResponse": null,
+                "responseCode": "00",
+                "responseDescription": "APPROVAL",
+                "status": "Captured"
+            }
+        })
+    }
+
+    #[test]
+    fn transaction_table_renders_fields_from_post_sale_response() {
+        let table = transaction_table(&sale_post_response());
+        assert!(
+            table.contains("100.00"),
+            "amount must resolve on a POST sale response, got:\n{table}"
+        );
+        assert!(
+            table.contains("TST938"),
+            "authCode must resolve on a POST sale response, got:\n{table}"
+        );
+        assert!(
+            table.contains("APPROVAL"),
+            "responseDescription must resolve on a POST sale response, got:\n{table}"
+        );
+    }
+
+    /// `capture`/`void`/`refund`/`tip-adjust` return `TransactionResponseIsvDto`
+    /// — the same nested shape as sale, but with no `processedAmount`.
+    #[test]
+    fn transaction_table_renders_fields_without_processed_amount() {
+        let mut v = sale_post_response();
+        v.as_object_mut().expect("object").remove("processedAmount");
+        let table = transaction_table(&v);
+        assert!(
+            table.contains("100.00"),
+            "amount must fall back to transactionReceipt.amount, got:\n{table}"
+        );
+    }
+
+    /// When only `processedAmount` and `details` are present (no receipt), the
+    /// table must still resolve every field.
+    #[test]
+    fn transaction_table_falls_back_to_processed_amount_and_details() {
+        let mut v = sale_post_response();
+        v.as_object_mut()
+            .expect("object")
+            .remove("transactionReceipt");
+        let table = transaction_table(&v);
+        assert!(table.contains("100.00"), "amount from processedAmount");
+        assert!(table.contains("TST938"), "authCode from details");
+        assert!(table.contains("APPROVAL"), "message from details");
     }
 
     #[test]

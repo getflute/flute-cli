@@ -100,7 +100,7 @@ for these.
 | Command | Stdout **on success**, even with `--output json` |
 |---|---|
 | `completion <shell>` | raw shell completion script |
-| `update` | plain text (e.g. `Already on the latest version (1.1.1).`) |
+| `update` | plain text (e.g. `Already on the latest version (<version>).`) |
 | `auth switch <profile>` | plain text (`Default profile set to [production].`) |
 | `auth logout` | plain text |
 | `auth token` | the raw bearer token on one line, no envelope |

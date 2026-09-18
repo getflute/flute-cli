@@ -14,11 +14,19 @@
 brew install getflute/flute-cli/flute
 ```
 
-**Shell script (maps to GitHub Releases)**
+**Shell script (macOS / Linux — installs from GitHub Releases)**
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/getflute/flute-cli/releases/latest/download/flute-installer.sh | sh
 ```
+
+**PowerShell (Windows — installs from GitHub Releases)**
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/getflute/flute-cli/releases/latest/download/flute-installer.ps1 | iex"
+```
+
+The installer drops `flute.exe` in `%USERPROFILE%\.cargo\bin` and adds that directory to your user `PATH`. Open a new terminal afterwards so the updated `PATH` takes effect, then verify with `flute version`.
 
 **From source**
 

@@ -13,6 +13,11 @@ cargo-dist-version = "0.31.0"
 ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell", "homebrew"]
+# Ship .tar.gz rather than the default .tar.xz. GNU tar shells out to an external `xz`
+# binary, and ubuntu:24.04 / debian:*-slim no longer ship xz-utils, so the shell installer
+# died there with "tar (child): xz: Cannot exec". gzip is present on every base image we
+# tested, including Alpine. macOS was unaffected: BSD tar decompresses via libarchive.
+unix-archive = ".tar.gz"
 # Target platforms to build apps for (Rust target-triple syntax)
 # Full matrix: macOS amd64+arm64, Linux amd64+arm64, Windows amd64
 targets = [

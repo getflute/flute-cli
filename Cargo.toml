@@ -25,7 +25,10 @@ rust_decimal = "1"
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 axoupdater = { version = "0.10.0", default-features = false, features = ["tokio", "github_releases"] }
-keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent"] }
+# `vendored` statically links libdbus. Without it the Linux binaries carry a runtime
+# NEEDED on libdbus-1.so.3, which minimal distros do not ship, so `flute` fails to start
+# with a loader error even after the installer reports success.
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent", "vendored"] }
 toml = "0.8"
 dirs = "5"
 thiserror = "2"

@@ -16,7 +16,7 @@ use crate::cli::output::{Envelope, OutputFormat, fit};
 /// - Falls back to treating `v` itself as an array.
 ///
 /// - `json`  → `Envelope { object: "terminal_list", data: v (raw), … }`
-/// - `table` → columnar table via [`terminal_list_table`]
+/// - `table` → columnar table with [`terminal_list_table`]
 /// - `quiet` → one ID per line
 pub fn render_terminal_list(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     let (items, _total) = extract_items(v);
@@ -131,7 +131,7 @@ pub(crate) fn terminal_status_table(v: &Value) -> String {
 /// Render a single terminal status response.
 ///
 /// - `json`  → `Envelope { object: "terminal_status", data: v, … }`
-/// - `table` → key-value list via [`terminal_status_table`]
+/// - `table` → key-value list with [`terminal_status_table`]
 /// - `quiet` → just the terminal `terminalId`
 pub fn render_terminal_status(
     v: &Value,

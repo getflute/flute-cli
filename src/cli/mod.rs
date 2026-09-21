@@ -914,7 +914,7 @@ pub enum DevicesCommand {
 
 /// POS transaction subcommands — Phase 3 Task 3.2.
 // PosCommand::Create carries many optional String fields (all the POS request
-// fields). The enum is always heap-allocated via `Box<PosCommand>` in `Command`,
+// fields). The enum is always heap-allocated with `Box<PosCommand>` in `Command`,
 // so the stack impact is a single pointer. The lint would push us towards nested
 // boxing of individual fields without benefit.
 #[allow(clippy::large_enum_variant)]

@@ -33,7 +33,7 @@
 ### CreateSubscriptionRequestDto (only `requesterIpAddress` is schema-required, but the others are effectively required)
 - `customerId`: uuid — `--customer-id` (**required** in practice)
 - `paymentMethodId`: uuid — `--payment-method-id` (**required**; must be a vaulted+active method)
-- `amount`: number — `--amount` (via to_amount_number)
+- `amount`: number — `--amount` (with to_amount_number)
 - `currencyId`: int — `--currency-id`, **default 1** (USD)
 - `paymentFrequencyUnit`: enum PaymentFrequencyUnitDto — `--interval` accepts `day|week|month`
   (also `daily|weekly|monthly` aliases) → **1=Day, 2=Week, 3=Month**

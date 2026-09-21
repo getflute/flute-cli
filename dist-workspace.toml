@@ -16,7 +16,7 @@ installers = ["shell", "powershell", "homebrew"]
 # Ship .tar.gz rather than the default .tar.xz. GNU tar shells out to an external `xz`
 # binary, and ubuntu:24.04 / debian:*-slim no longer ship xz-utils, so the shell installer
 # died there with "tar (child): xz: Cannot exec". gzip is present on every base image we
-# tested, including Alpine. macOS was unaffected: BSD tar decompresses via libarchive.
+# tested, including Alpine. macOS was unaffected: BSD tar decompresses with libarchive.
 unix-archive = ".tar.gz"
 # Target platforms to build apps for (Rust target-triple syntax)
 # Full matrix: macOS amd64+arm64, Linux amd64+arm64, Windows amd64
@@ -36,7 +36,7 @@ install-updater = false
 # Homebrew tap to publish the formula to on every release. The HOMEBREW_TAP_TOKEN
 # secret on the main repo carries a fine-grained PAT with Contents: write on
 # the tap. Without this block, cargo-dist only attaches the .rb file to the
-# Release page; brew users have to install via direct URL instead of
+# Release page; brew users have to install with a direct URL instead of
 # `brew install getflute/flute-cli/flute`.
 tap = "getflute/homebrew-flute-cli"
 publish-jobs = ["homebrew"]

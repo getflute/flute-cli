@@ -80,7 +80,7 @@ async fn debug_logs_mask_pan_and_cvv_through_the_real_send_path() {
     };
 
     // `create_customer` (public) POSTs the body through the shared `send()` core,
-    // which debug-logs the request body via `redact_for_log`.
+    // which debug-logs the request body with `redact_for_log`.
     let _ = api
         .create_customer(serde_json::json!({
             "accountNumber": "4111111111111111",

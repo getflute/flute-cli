@@ -157,7 +157,7 @@ mod tests {
             .await;
 
         let api = test_client(server.uri());
-        // Build via the canonical builder to prove builder→transport wiring.
+        // Build with the canonical builder to prove builder→transport wiring.
         let body = build_customer_body(
             Some("Alice"),
             Some("Smith"),
@@ -259,7 +259,7 @@ mod tests {
     async fn list_customers_url_encodes_space_in_search() {
         let server = MockServer::start().await;
 
-        // wiremock's query_param matcher decodes via url::Url::query_pairs(),
+        // wiremock's query_param matcher decodes with url::Url::query_pairs(),
         // so we match on the decoded string "alice smith" — the transport will
         // have sent "alice+smith" or "alice%20smith" on the wire.
         Mock::given(method("GET"))

@@ -124,7 +124,7 @@ pub fn render_token_create(v: &Value, fmt: OutputFormat, environment: &str) -> a
 /// The response is `{tokens: [...]}` — reads the `tokens` array defensively.
 ///
 /// - `json`  → `Envelope { object: "api_token_list", data: v, … }`
-/// - `table` → columnar table via [`token_list_table`]
+/// - `table` → columnar table with [`token_list_table`]
 /// - `quiet` → one `clientId` per line
 pub fn render_token_list(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     let items = extract_tokens(v);

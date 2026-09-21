@@ -25,7 +25,7 @@ pub(crate) struct SaleArgs {
     pub customer_id: Option<String>,
     pub payment_method_id: Option<String>,
     pub currency_id: Option<i32>,
-    /// CardDataSource enum: 1 = Internet/ISV (default). Expose via --card-data-source.
+    /// CardDataSource enum: 1 = Internet/ISV (default). Expose with --card-data-source.
     pub card_data_source: i32,
     pub l2_tax_rate: Option<Decimal>,
     pub l3_invoice: Option<String>,
@@ -113,7 +113,7 @@ fn parse_l3_product(s: &str) -> Result<Value> {
 /// This is a **pure function** — no I/O, no network, trivially unit-testable.
 ///
 /// ## Design notes
-/// - Amounts are inserted via `to_amount_number` (arbitrary_precision JSON Number)
+/// - Amounts are inserted with `to_amount_number` (arbitrary_precision JSON Number)
 ///   so the wire format is exact decimal (e.g. `100.00`), not a float artifact.
 /// - `currencyId` is **omitted** unless `--currency-id` is passed; the server
 ///   handles the default.
@@ -369,7 +369,7 @@ pub(crate) fn filter_items(
 
 /// Build the "table" output string for the `list` command.
 ///
-/// Columns (fixed widths via [`crate::cli::output::fit`]):
+/// Columns (fixed widths with [`crate::cli::output::fit`]):
 /// - `ID` (36)  `DATE` (10)  `STATUS` (12)  `TYPE` (14)  `AMOUNT` (10)  `CUSTOMER` (24)
 ///
 /// Amount is read from `totalAmount` (top-level) or `amount.totalAmount` (nested object).
@@ -621,7 +621,7 @@ pub(crate) fn render_transaction(v: &Value, fmt: OutputFormat, environment: &str
 /// Shared handler for card-transaction verbs that share the same request body
 /// shape (`sale` and `auth`).
 ///
-/// Both `sale` and `auth` build the body identically via `build_sale_body` and
+/// Both `sale` and `auth` build the body identically with `build_sale_body` and
 /// differ only in which API endpoint they call.  All future card-verb handlers
 /// that share this shape should call this function.
 pub(crate) async fn execute_card_txn(
@@ -764,7 +764,7 @@ pub(crate) fn build_settle_body(payment_processor_id: &str) -> Value {
 ///
 /// # Wire fields
 /// - `transactionId` (required)
-/// - `tipAmount` (required, exact decimal via `to_amount_number`)
+/// - `tipAmount` (required, exact decimal with `to_amount_number`)
 pub(crate) fn build_tip_adjust_body(
     transaction_id: &str,
     tip_amount: rust_decimal::Decimal,
@@ -1437,7 +1437,7 @@ mod tests {
     #[test]
     fn render_transaction_json_envelope_shape() {
         let v = sample_txn_response();
-        // Capture stdout by rendering to a string via the envelope directly
+        // Capture stdout by rendering to a string with the envelope directly
         let envelope = Envelope::new("transaction", v.clone(), "sandbox", None);
         let json_str = serde_json::to_string_pretty(&envelope).unwrap();
         let parsed: Value = serde_json::from_str(&json_str).unwrap();

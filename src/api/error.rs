@@ -23,7 +23,7 @@ pub enum ApiError {
 
 // The Flute API returns errors in two casings: camelCase from the public-API
 // layer and PascalCase from internal exception handlers (e.g. 500s with
-// "Title", "CorrelationId" capitalized). Accept both via serde alias so we
+// "Title", "CorrelationId" capitalized). Accept both with serde alias so we
 // extract everything regardless of response shape.
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct AspNetError {

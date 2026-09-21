@@ -4,14 +4,14 @@
 //!   * the `update` CLI subcommand, which performs the install
 //!   * the startup check (`update_check`) that only fetches the latest version
 //!
-//! For users who installed via the cargo-dist shell/PowerShell/Homebrew
+//! For users who installed with the cargo-dist shell/PowerShell/Homebrew
 //! installers, the installer drops an "install receipt" at
 //! `~/.config/flute/flute-receipt.json`. axoupdater reads that file to know
 //! which release source + installer to use. For users who built from source
 //! (`cargo install`, `cargo build --release`) there is no receipt — we fall
 //! back to an explicit GitHub Releases source so the version *check* still
 //! works. In that case the actual install can't be performed by axoupdater
-//! (no installer metadata), so we surface a clear "reinstall via the
+//! (no installer metadata), so we surface a clear "reinstall with the
 //! shell/brew/powershell installer" message instead of a cryptic error.
 //!
 //! `FLUTE_GITHUB_TOKEN` is honored as an unauthenticated-rate-limit escape

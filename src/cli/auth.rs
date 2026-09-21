@@ -33,7 +33,7 @@ pub async fn login(profile: &str) -> Result<()> {
 /// Show active profile, environment, and credential/token status.
 /// Report the active profile plus a **live** authentication check (ARISE-4706):
 /// the current client ID and whether the stored credentials actually
-/// authenticate against the API right now (via an authenticated ping).
+/// authenticate against the API right now (with an authenticated ping).
 pub async fn status(profile: &str, output: OutputFormat) -> Result<()> {
     let p =
         Profile::by_name(profile).ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;

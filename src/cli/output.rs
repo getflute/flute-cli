@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn error_json_finds_api_error_through_context_wrapper() {
-        // `?` callers often add context via `anyhow::Context`; the downcast
+        // `?` callers often add context with `anyhow::Context`; the downcast
         // must still locate the typed ApiError in the chain, otherwise the
         // envelope would lose status + correlation_id.
         let inner: anyhow::Error = ApiError::Api {

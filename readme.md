@@ -174,7 +174,7 @@ flute --debug transactions get <txn-id>
 
 | Field | How it appears in logs |
 |---|---|
-| Card / bank account numbers (`cardNumber`, `accountNumber`, `routingNumber`, `pan`) | masked to the last 4 — e.g. `************1111` |
+| Card / bank account numbers (`cardNumber`, `accountNumber`, `routingNumber`, `pan`) | masked to the last 4 — for example, `************1111` |
 | CVV / security code (`securityCode`, `cvv`, `cvc`) | removed entirely — `***` |
 | Bearer token | never logged (it is sent as a header, never part of the body trace) |
 
@@ -223,7 +223,7 @@ Generate and install a completion script:
 # Bash
 flute completion bash > /etc/bash_completion.d/flute
 
-# Zsh (add to a directory on $fpath, e.g. /usr/local/share/zsh/site-functions)
+# Zsh (add to a directory on $fpath, for example /usr/local/share/zsh/site-functions)
 flute completion zsh > /usr/local/share/zsh/site-functions/_flute
 
 # Fish

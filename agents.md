@@ -92,7 +92,7 @@ so don't feed their success output to a parser.
 
 **Their failures are still JSON.** Every command routes errors through the same central
 handler, so under `--output json` a failure prints an `ErrorJson` on stdout and exits
-non-zero — e.g. `flute --output json auth switch garbage` →
+non-zero — for example, `flute --output json auth switch garbage` →
 `{"kind":"client","message":"unknown profile: garbage"}`, exit 3. So the rule is
 success-only: parse the failure envelope for every command, but expect plain text on success
 for these.
@@ -100,7 +100,7 @@ for these.
 | Command | Stdout **on success**, even with `--output json` |
 |---|---|
 | `completion <shell>` | raw shell completion script |
-| `update` | plain text (e.g. `Already on the latest version (<version>).`) |
+| `update` | plain text (for example, `Already on the latest version (<version>).`) |
 | `auth switch <profile>` | plain text (`Default profile set to [production].`) |
 | `auth logout` | plain text |
 | `auth token` | the raw bearer token on one line, no envelope |
@@ -172,7 +172,7 @@ as exact JSON numbers (no float rounding). `--exp` is `MM/YY` or `MM/YYYY`.
   level. Only `transactionId` and `status` appear at the top level of both. When reading JSON, take
   the amount from `amount.totalAmount` on a GET and from `processedAmount` (or
   `transactionReceipt.amount.totalAmount`) on a POST; the table renderer resolves both.
-- **AVS result (`avsResponse`):** a **structured object** (not a string), present only when AVS is enabled for the merchant/processor — otherwise `null`. Shape: `{ responseCode (raw AVS code, e.g. "Y"/"A"/"Z"/"N"), action ("Allow"|"Deny"), group ("NoMatch"|"PartialMatch"|"Incompatible"|"Unavailable"|"ValidGroup"), result ("Passed"|"Failed"), codeDescription (human text), plus int enums actionId/groupId/resultId }`. It appears on `sale`/`auth`/`get`/`inspect` responses (top-level; `transactionReceipt.avsResponse` may stay `null`). Read the full object from `--output json`; the `inspect` table summarizes it as `code — group / result / action — description` (or `—` when null). **A transaction can be Approved even when `result` is "Failed"** if the merchant's AVS `action` is "Allow" — treat `avsResponse` as advisory and enforce your own policy on `responseCode`/`group` if needed.
+- **AVS result (`avsResponse`):** a **structured object** (not a string), present only when AVS is enabled for the merchant/processor — otherwise `null`. Shape: `{ responseCode (raw AVS code, for example "Y"/"A"/"Z"/"N"), action ("Allow"|"Deny"), group ("NoMatch"|"PartialMatch"|"Incompatible"|"Unavailable"|"ValidGroup"), result ("Passed"|"Failed"), codeDescription (human text), plus int enums actionId/groupId/resultId }`. It appears on `sale`/`auth`/`get`/`inspect` responses (top-level; `transactionReceipt.avsResponse` may stay `null`). Read the full object from `--output json`; the `inspect` table summarizes it as `code — group / result / action — description` (or `—` when null). **A transaction can be Approved even when `result` is "Failed"** if the merchant's AVS `action` is "Allow" — treat `avsResponse` as advisory and enforce your own policy on `responseCode`/`group` if needed.
 - **Reading current state:** derive a transaction's current state **only** from `status`/`statusId` plus `availableOperations` — **not** from `transactionType` or `operationType`. Both are sticky to the *original* operation: after a `void`, the record still reads `transactionType:"Sale"` and `operationType:"PayNow"`, while `status` becomes `"Voided"` and `availableOperations` becomes `[]`. `void`/`refund` update `status` in place (same `transactionId`); the API exposes **no** `lastOperationType`, `voidedAt`/`refundedAt`, or operations-history field, and `transactionDateTime` stays the original timestamp. Rule of thumb: `availableOperations` lists what you *can* still do, `status` tells you what *happened*, `transactionType` only tells you what it originally *was*.
 
 ### ACH — `flute ach …`

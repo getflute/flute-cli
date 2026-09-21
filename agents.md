@@ -259,6 +259,6 @@ Use a unique `--reference-id` on `transactions`/`pos` to leverage server-side du
 - **Don't combine `--output json` with `auth login`** (interactive) — use env vars.
 - **Don't parse stderr** — the structured error is on stdout under `--output json`. Stderr carries tracing, the production banner, and update notices.
 - **Don't fire a second `pos create` on a terminal with one in-progress** — cancel/complete first.
-- **Don't retry money-moving creates** without reconciling via `list`/`get`.
+- **Don't retry money-moving creates** without reconciling with `list`/`get`.
 - **Card/secret redaction is only applied to `--debug` logs**, not to request bodies or JSON output — handle `clientSecret`/PAN responses securely.
 - This CLI is **v1**. `aurora-payments/arise-backend#1099` (creditCard*→card* rename + strict unknown-field rejection) is **v2-only** and does not affect it.

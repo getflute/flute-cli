@@ -33,7 +33,7 @@ OpenAPI "required" list undersells real requirements — expect to add fields wh
 - `terminalId`: uuid — `--terminal-id` (**required**)
 - `transactionTypeId`: int enum TransactionTypeDto — `--transaction-type`; **1=Authorization, 2=Sale
   (default), 3=Capture, 4=Void, 5=Refund**
-- `amount`: number nullable — `--amount` (required for Auth/Sale; via `to_amount_number`)
+- `amount`: number nullable — `--amount` (required for Auth/Sale; with `to_amount_number`)
 - `currencyId`: int nullable — `--currency-id` (conditional; default 1=USD like card, may be required live)
 - `tipAmount`/`tipRate`: number nullable — `--tip-amount`/`--tip-rate`
 - `posDeviceId`: string nullable — `--pos-device-id` (desc says "Mandatory"; expose it)
@@ -56,7 +56,7 @@ OpenAPI "required" list undersells real requirements — expect to add fields wh
 ### `pos create --wait` long-poll (the new mechanic)
 1. Build create body with `waitForAcceptanceByTerminal=true`; POST → get the pos-transaction `id`.
 2. If `--wait`: poll `GET /pos-transactions/{id}` every N seconds (fixed, e.g. 2s) until
-   `isCompleted == true` OR a timeout (`--wait-timeout` seconds, default 120). Honor Ctrl-C via
+   `isCompleted == true` OR a timeout (`--wait-timeout` seconds, default 120). Honor Ctrl-C with
    `tokio::signal` — on interrupt, print the last-known status and exit non-zero/zero gracefully.
    Render the final pos-transaction. Without `--wait`: render the create response immediately.
 3. Implement the poll loop with `tokio::time::sleep`; make the "is this a terminal/exit state"

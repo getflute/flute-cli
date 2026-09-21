@@ -180,7 +180,7 @@ src/
 Amounts are parsed from the `--amount`/`--tip-amount` strings into
 `rust_decimal::Decimal` for validation (well-formed, non-negative, scale ≤ 2) — **never
 `f64` arithmetic**. The CLI performs no money math; it forwards the exact decimal the user
-typed. The wire field is a JSON number, so the request-body builder emits the amount via a
+typed. The wire field is a JSON number, so the request-body builder emits the amount with a
 serde path that preserves the exact decimal value (no float rounding).
 
 ### Idempotency (drives `agents.md` retry table)
@@ -216,7 +216,7 @@ zero `unsafe`.
 - **cargo-dist** (`dist-workspace.toml`, `[profile.dist]` thin-LTO) for cross builds.
 - **GitHub Actions:** `PR → fmt → clippy -D warnings → test → build (all platforms)
   → release on tag`.
-- **`flute update`** via `axoupdater` (GitHub Releases); source builds get an info message.
+- **`flute update`** with `axoupdater` (GitHub Releases); source builds get an info message.
 - **Homebrew** tap (`flute-payments/tap/flute`) + `curl … install.sh | sh`.
 
 ## 8. Testing

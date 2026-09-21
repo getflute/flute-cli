@@ -80,7 +80,7 @@ pub struct CreateArgs {
 /// |-----------------------|-------------------------|-----------------------------------------|
 /// | `customer_id`         | `customerId`            | required UUID                           |
 /// | `payment_method_id`   | `paymentMethodId`       | required UUID; must be vaulted+active   |
-/// | `amount`              | `amount`                | validated decimal via `parse_amount`    |
+/// | `amount`              | `amount`                | validated decimal with `parse_amount`   |
 /// | `currency_id`         | `currencyId`            | default 1 (USD)                         |
 /// | `number_of_payments`  | `numberOfPayments`      | required integer                        |
 /// | `payment_frequency`   | `paymentFrequency`      | default 1 (every 1 unit)                |
@@ -333,8 +333,8 @@ pub fn filter_subscriptions_by_status(items: Vec<Value>, status: &str) -> Vec<Va
 /// Render a single subscription (get/create/terminate response).
 ///
 /// - `json`  → `Envelope { object: "subscription", data: v, … }`
-/// - `table` → key-value list via [`subscription_table`]
-/// - `quiet` → just the subscription ID (via `sub_id`)
+/// - `table` → key-value list with [`subscription_table`]
+/// - `quiet` → just the subscription ID (with `sub_id`)
 pub fn render_subscription(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     match fmt {
         OutputFormat::Json => {
@@ -354,7 +354,7 @@ pub fn render_subscription(v: &Value, fmt: OutputFormat, environment: &str) -> a
 /// Render a subscription list response.
 ///
 /// - `json`  → `Envelope { object: "subscription_list", data: raw, … }`
-/// - `table` → columnar table via [`subscription_list_table`]
+/// - `table` → columnar table with [`subscription_list_table`]
 /// - `quiet` → one subscription ID per line
 pub fn render_subscription_list(
     v: &Value,
@@ -388,7 +388,7 @@ pub fn render_subscription_list(
 /// Render a subscription payments response (array or `{items}`).
 ///
 /// - `json`  → `Envelope { object: "subscription_payments", data: raw, … }`
-/// - `table` → columnar table via [`subscription_payments_table`]
+/// - `table` → columnar table with [`subscription_payments_table`]
 /// - `quiet` → one payment ID per line
 pub fn render_subscription_payments(
     v: &Value,
@@ -829,7 +829,7 @@ mod tests {
                   "paymentOrder": 1, "initialExecutionDateTime": "2026-05-01T00:00:00Z" }
             ]
         });
-        // Extract via the same logic render_subscription_payments uses
+        // Extract with the same logic render_subscription_payments uses
         let items = v
             .get("items")
             .and_then(|x| x.as_array())

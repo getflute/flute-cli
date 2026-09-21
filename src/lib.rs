@@ -1290,7 +1290,7 @@ pub fn run() -> anyhow::Result<()> {
 /// * Skip for `completion` (offline, no TTY implied).
 /// * Skip when stderr isn't a TTY (piped output, CI logs).
 /// * Skip when `--output json` is set (keeps stdout clean for machine consumers).
-/// * Respect the config-file and env-var opt-outs via `update_check::opt_out`.
+/// * Respect the config-file and env-var opt-outs with `update_check::opt_out`.
 fn should_run_update_check(cmd: &cli::Command, output_fmt: cli::OutputFormat) -> bool {
     if matches!(
         cmd,

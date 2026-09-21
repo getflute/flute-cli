@@ -67,7 +67,7 @@ async fn ping_auth_stack_fetches_token_and_sends_bearer() {
     // additional coverage, so we omit it from this integration file.
 }
 
-// ─── Part B: binary tests via assert_cmd ────────────────────────────────────
+// ─── Part B: binary tests with assert_cmd ───────────────────────────────────
 
 /// `flute version` exits 0 and prints the crate version.
 #[test]
@@ -125,5 +125,5 @@ fn help_exits_zero() {
 //   - With no creds stored it tries (and fails) to load from the keychain,
 //     which may block, prompt, or return different errors across CI platforms.
 //   - The exit-code mapping for the missing-credentials path is already
-//     unit-tested via `exit_code_for` in src/cli/output.rs.
+//     unit-tested with `exit_code_for` in src/cli/output.rs.
 // That combination makes any binary-level ping assertion inherently flaky.

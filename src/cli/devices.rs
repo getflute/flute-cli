@@ -139,7 +139,7 @@ fn extract_devices(v: &Value) -> Vec<Value> {
 /// Render a device list response (`GetIsvDevicesResponseDto`).
 ///
 /// - `json`  → `Envelope { object: "device_list", data: v, … }`
-/// - `table` → columnar table via [`device_list_table`]
+/// - `table` → columnar table with [`device_list_table`]
 /// - `quiet` → one deviceId per line (falls back to `id` if `deviceId` absent)
 pub fn render_device_list(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     let items = extract_devices(v);
@@ -169,7 +169,7 @@ pub fn render_device_list(v: &Value, fmt: OutputFormat, environment: &str) -> an
 /// Render a single device response.
 ///
 /// - `json`  → `Envelope { object: "device", data: v, … }`
-/// - `table` → key-value list via [`device_table`]
+/// - `table` → key-value list with [`device_table`]
 /// - `quiet` → just the `deviceId` (falls back to `id` if absent)
 pub fn render_device(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     match fmt {

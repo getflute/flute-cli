@@ -168,7 +168,7 @@ pub fn billing_from_get_response(current_billing: &Value) -> Option<Value> {
 /// Build the JSON request body for `customers add-card`.
 ///
 /// `name` is optional; `pan`, `exp`, and `cvv` are required by the CLI flags.
-/// `exp` is parsed via [`parse_exp`] (`"MM/YY"` or `"MM/YYYY"`).
+/// `exp` is parsed with [`parse_exp`] (`"MM/YY"` or `"MM/YYYY"`).
 ///
 /// # Field mapping
 /// | Arg   | Wire key            |
@@ -282,7 +282,7 @@ pub(crate) fn customer_table(v: &Value) -> String {
 /// - Falls back to treating `v` itself as an array.
 ///
 /// - `json`  → `Envelope { object: "customer_list", data: {items, total}, … }`
-/// - `table` → columnar table via [`customer_list_table`]
+/// - `table` → columnar table with [`customer_list_table`]
 /// - `quiet` → one ID per line
 pub fn render_customer_list(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     let (items, total) = extract_customer_items(v);
@@ -428,7 +428,7 @@ pub fn render_payment_method(v: &Value, fmt: OutputFormat, env: &str) -> anyhow:
 /// Response may be an array or `{items, …}` — read defensively.
 ///
 /// - `json`  → `Envelope { object: "payment_methods", … }`
-/// - `table` → columnar table via [`payment_methods_table`]
+/// - `table` → columnar table with [`payment_methods_table`]
 /// - `quiet` → one ID per line
 pub fn render_payment_methods(
     v: &Value,
@@ -662,7 +662,7 @@ mod tests {
 
     // ── billing_from_get_response: GET shape → update shape (ARISE-4706) ───────
     // The GET response nests state/country objects and omits flat stateId/
-    // countryId; the update PUT wants the flat ids. Preserving via a raw copy
+    // countryId; the update PUT wants the flat ids. Preserving with a raw copy
     // would drop stateId/countryId and send stray objects, corrupting the
     // address on an unrelated update.
 

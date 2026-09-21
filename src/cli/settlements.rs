@@ -112,7 +112,7 @@ pub(crate) fn settlement_table(v: &Value) -> String {
 /// Render a settlement batch list response.
 ///
 /// - `json`  → `Envelope { object: "settlement_list", data: raw response, … }`
-/// - `table` → columnar table via [`settlement_list_table`]
+/// - `table` → columnar table with [`settlement_list_table`]
 /// - `quiet` → one `id` per line
 pub fn render_settlement_list(
     v: &Value,
@@ -143,7 +143,7 @@ pub fn render_settlement_list(
 /// Render a single settlement batch.
 ///
 /// - `json`  → `Envelope { object: "settlement", data: v, … }`
-/// - `table` → key-value list via [`settlement_table`]
+/// - `table` → key-value list with [`settlement_table`]
 /// - `quiet` → just the `id`
 pub fn render_settlement(v: &Value, fmt: OutputFormat, environment: &str) -> anyhow::Result<()> {
     match fmt {

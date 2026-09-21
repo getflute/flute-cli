@@ -122,7 +122,7 @@ pub struct AchArgs {
 /// ## Field mapping
 /// | Arg field             | Wire key               | Notes                                   |
 /// |-----------------------|------------------------|-----------------------------------------|
-/// | `amount`              | `amount`               | exact decimal via `to_amount_number`    |
+/// | `amount`              | `amount`               | exact decimal with `to_amount_number`   |
 /// | `payment_processor_id`| `paymentProcessorId`   | required, always present                |
 /// | `requester_ip`        | `requesterIpAddress`   | required, default `"127.0.0.1"`         |
 /// | `sec_code`            | `secCode`              | required, default `1` (Web)             |

@@ -66,7 +66,7 @@ pub fn build_pos_create_body(args: &PosCreateArgs) -> anyhow::Result<Value> {
         Value::Number(serde_json::Number::from(args.currency_id)),
     );
 
-    // Amount (optional; parse via to_amount_number)
+    // Amount (optional; parse with to_amount_number)
     if let Some(ref raw) = args.amount {
         let d = parse_amount(raw)?;
         obj.insert("amount".into(), to_amount_number(d)?);
@@ -241,7 +241,7 @@ pub(crate) fn pos_transaction_list_table(items: &[Value]) -> String {
 /// Render a single POS transaction (used for create/get/cancel and the --wait final render).
 ///
 /// - `json`  → `Envelope { object: "pos_transaction", data: v, … }`
-/// - `table` → key-value list via [`pos_transaction_table`]
+/// - `table` → key-value list with [`pos_transaction_table`]
 /// - `quiet` → just `v["id"]`
 pub fn render_pos_transaction(
     v: &Value,
@@ -267,7 +267,7 @@ pub fn render_pos_transaction(
 /// Render a POS transaction list response.
 ///
 /// - `json`  → `Envelope { object: "pos_transaction_list", data: v (raw), … }`
-/// - `table` → columnar table via [`pos_transaction_list_table`]
+/// - `table` → columnar table with [`pos_transaction_list_table`]
 /// - `quiet` → one ID per line
 pub fn render_pos_transaction_list(
     v: &Value,

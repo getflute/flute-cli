@@ -153,7 +153,7 @@ fn redact_for_log(body: &serde_json::Value) -> String {
 /// parses as JSON, sensitive fields are masked. Non-JSON bodies are never echoed
 /// verbatim — a plaintext token/JWT or an error page reflecting a secret would
 /// otherwise leak wholesale — so only a byte-count placeholder is logged. (The
-/// full error text still reaches the user via `from_aspnet`; this only governs
+/// full error text still reaches the user through `from_aspnet`; this only governs
 /// what the `--debug` trace writes to stderr.)
 fn redact_text_for_log(text: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(text) {
@@ -437,7 +437,7 @@ mod tests {
 
     /// Regression: send_body_discard returns Ok(()) when the server responds
     /// with HTTP 200 and an empty body (the live PUT /customers/{id} behavior
-    /// that previously caused "EOF while parsing a value" via send::<Value>).
+    /// that previously caused "EOF while parsing a value" with send::<Value>).
     #[tokio::test]
     async fn send_body_discard_tolerates_empty_200_body() {
         use wiremock::{

@@ -187,7 +187,7 @@ mod tests {
         let converted = crate::treat_404_as_ok(result);
         assert!(
             converted.is_ok(),
-            "404 on revoke must be treated as idempotent success via treat_404_as_ok"
+            "404 on revoke must be treated as idempotent success with treat_404_as_ok"
         );
     }
 }

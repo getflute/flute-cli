@@ -7,7 +7,7 @@
 > rejection) is **v2-only; v1 is unaffected** (per the PR). No v1 field we send is renamed by it.
 
 Pinned from the UAT OpenAPI ("ISV API BFF"). Field names/casing authoritative.
-Amounts: parse `--amount` as `Decimal`, emit via `to_amount_number` (exact JSON number).
+Amounts: parse `--amount` as `Decimal`, emit with `to_amount_number` (exact JSON number).
 Model request bodies as `serde_json::Value` builders; responses as `serde_json::Value`
 (lossless), reusing the transactions pattern (`render_transaction` etc.).
 
@@ -75,7 +75,7 @@ transactionsCount, transactionsVolume, lastTransactionDate, …`).
 
 ### CreatePaymentMethodRequestIsvDto (add-card)
 `name` (nullable), `pan`, `expirationMonth` (int), `expirationYear` (int), `securityCode` (nullable).
-CLI: `add-card <customer-id> --card`(→pan) `--exp MM/YY`(→month/year via parse_exp) `--cvv`(→securityCode) `--name`.
+CLI: `add-card <customer-id> --card`(→pan) `--exp MM/YY`(→month/year with parse_exp) `--cvv`(→securityCode) `--name`.
 
 ### CreateAchAccountPaymentMethodRequestIsvDto (add-ach)
 `name`, `accountNumber`, `routingNumber`, `accountType` (enum), `accountHolderType` (enum), `taxId`.

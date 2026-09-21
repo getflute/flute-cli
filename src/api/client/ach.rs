@@ -55,7 +55,7 @@ mod tests {
 
     /// Wiremock test: `ach_debit` POSTs to the correct path.
     ///
-    /// The request body is built via `build_ach_body` so a regression in the
+    /// The request body is built with `build_ach_body` so a regression in the
     /// builder is caught here at the transport layer (builder → transport wiring).
     #[tokio::test]
     async fn ach_debit_posts_to_correct_path_with_body() {

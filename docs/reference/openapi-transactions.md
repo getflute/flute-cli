@@ -9,7 +9,7 @@
 Pinned from `https://api.uat.arise.risewithaurora.com/isv-api/swagger/v1/swagger.json`
 (title "ISV API BFF", release-3.0.0). Field names/casing are authoritative; model serde
 DTOs to match exactly. All amount fields on the wire are JSON `number` (double); the CLI
-parses `--amount` as `rust_decimal::Decimal` and emits it as an exact JSON number via the
+parses `--amount` as `rust_decimal::Decimal` and emits it as an exact JSON number with the
 `to_amount_number` helper (serde_json `arbitrary_precision`).
 
 ## Endpoints

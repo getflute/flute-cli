@@ -77,7 +77,7 @@ pub async fn run() -> Result<()> {
         match latest {
             Some(v) if v.to_string() != env!("CARGO_PKG_VERSION") => {
                 println!(
-                    "A newer version ({v}) is available, but this binary was not installed via a \
+                    "A newer version ({v}) is available, but this binary was not installed with a \
                      cargo-dist installer, so `update` cannot replace it in place.\n\
                      Reinstall using one of:\n  \
                      curl -LsSf https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/latest/download/flute-installer.sh | sh\n  \

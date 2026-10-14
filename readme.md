@@ -39,6 +39,8 @@ cargo build --release
 # Binary lands at target/release/flute
 ```
 
+This builds with Rust 1.99.0, pinned in `rust-toolchain.toml`; rustup installs it automatically the first time.
+
 ---
 
 ## Quick start

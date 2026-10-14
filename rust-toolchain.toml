@@ -1,0 +1,6 @@
+# Pinned so a new Rust release can't break CI with new (pedantic) lints.
+# Bump deliberately: change the version, fix any new lints, commit.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
